@@ -139,7 +139,7 @@
   <div class="wbtn" data-w="shotgun">&#128165; Shotgun<small>Devastating up close, spreads wide at range</small></div>
 </div>
 
-<div id="verBadge">v1.19</div>
+<div id="verBadge">v1.20</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -1042,13 +1042,21 @@ function fire() {
     }
   }
   const tgeo = new THREE.BufferGeometry().setFromPoints([B.from.clone(), B.from.clone()]);
-  tracer = new THREE.Line(tgeo, new THREE.LineBasicMaterial({ color:0xffe8b0, transparent:true, opacity:0.6 }));
+  tracer = new THREE.Line(tgeo, new THREE.LineBasicMaterial({ color:0xffe8b0, transparent:true,
+    opacity: weapon === 'bow' ? 0.12 : 0.6 })); // arrows don't glow like tracer rounds
   scene.add(tracer);
 }
 
 function impact() {
   B.impactDone = true;
   impactThud();
+  // arrows stay buried where they struck, riding with the animal
+  if (weapon === 'bow' && B.result.pts > 0 && bulletMesh) {
+    bulletMesh.position.copy(B.to).addScaledVector(B.dir, -0.18); // tip sunk into the hide
+    bulletMesh.lookAt(B.to.clone().add(B.dir));
+    animalGroup.attach(bulletMesh); // keeps world pose, follows every kick and fall
+    bulletMesh = null;
+  }
   // pellets scatter on impact and fade with the debris
   if (B.pellets) {
     B.pellets.forEach(pm => {
@@ -1669,15 +1677,17 @@ function bulletCamera(dt) {
   const arcY = u2 => (B.arcH || 0) * 4 * u2 * (1 - u2);
   const pos = B.from.clone().lerp(B.to, u);
   pos.y += arcY(u);
-  bulletMesh.position.copy(pos);
-  // orient along the (possibly arced) flight path
-  const uN = Math.min(1, u + 0.02);
-  const posN = B.from.clone().lerp(B.to, uN); posN.y += arcY(uN);
-  bulletMesh.lookAt(posN.distanceToSquared(pos) > 1e-9 ? posN : B.to);
-  // tracer trail
-  const uT = Math.max(0, u - 0.06);
-  const trailStart = B.from.clone().lerp(B.to, uT); trailStart.y += arcY(uT);
-  tracer.geometry.setFromPoints([trailStart, pos]);
+  if (bulletMesh) { // null once an arrow is stuck in the target
+    bulletMesh.position.copy(pos);
+    // orient along the (possibly arced) flight path
+    const uN = Math.min(1, u + 0.02);
+    const posN = B.from.clone().lerp(B.to, uN); posN.y += arcY(uN);
+    bulletMesh.lookAt(posN.distanceToSquared(pos) > 1e-9 ? posN : B.to);
+    // tracer trail
+    const uT = Math.max(0, u - 0.06);
+    const trailStart = B.from.clone().lerp(B.to, uT); trailStart.y += arcY(uT);
+    tracer.geometry.setFromPoints([trailStart, pos]);
+  }
   // pellet cloud spreads as it flies
   if (B.pellets) {
     const pr = new THREE.Vector3().crossVectors(B.dir, new THREE.Vector3(0,1,0)).normalize();
