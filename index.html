@@ -66,7 +66,7 @@
 
 <div class="overlay" id="hud">
   <div><div class="lvl" id="lvlName">Level 1</div><div class="sub" id="lvlSub"></div></div>
-  <div class="score"><div id="totScore">0 pts</div><div class="sub" id="lvlCount"></div></div>
+  <div class="score"><div id="totScore">0 pts</div><div class="sub" id="lvlCount"></div><div class="sub" id="bestScore"></div></div>
 </div>
 
 <div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to look through the scope</div><div>Slide your finger forward to fire</div></div>
@@ -85,6 +85,7 @@
   <h2 id="resTitle"></h2>
   <div class="stars" id="resStars"></div>
   <div class="pts" id="resPts"></div>
+  <div id="resBest" style="font-size:17px;color:#ffd76a;margin-bottom:4px;text-shadow:0 2px 8px #000"></div>
   <div id="vitalsWrap"></div>
   <p id="resDesc"></p>
   <div class="tap" id="resTap">Tap for next hunt</div>
@@ -95,6 +96,7 @@
   <p style="font-size:22px">Welcome to Mike's Big Hunt.</p>
   <p>Tap and hold the screen to take aim at your game. <b>Swipe up</b> when the crosshair is in the perfect spot. Enjoy the hunt!</p>
   <div class="tap">Tap to start hunting</div>
+  <div style="position:absolute;bottom:14px;right:18px;font-size:14px;opacity:.65;letter-spacing:1px">v1.12</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -713,6 +715,8 @@ const S = { START:'start', IDLE:'idle', SCOPED:'scoped', BULLET:'bullet', RESULT
 let state = S.START;
 let levelIdx = 0;
 let totalScore = 0;
+let sessionBest = 0;                                  // best full-run total this session
+const bestPerHunt = new Array(LEVELS.length).fill(-1); // best single shot per hunt this session
 let aimPhase = rnd(0, 100);
 let scopedTime = 0;
 let heartT = 0, birdT = 3;
@@ -733,6 +737,7 @@ function setHUD() {
   $('lvlSub').textContent = ENVS[L.env].label + ' • ' + L.dist + ' yds';
   $('totScore').textContent = totalScore + ' pts';
   $('lvlCount').textContent = 'Hunt ' + (levelIdx+1) + ' of ' + LEVELS.length;
+  $('bestScore').textContent = sessionBest > 0 ? 'Beat: ' + sessionBest + ' pts' : '';
 }
 
 function loadLevel(i) {
@@ -1062,6 +1067,14 @@ function showResult() {
   $('resTitle').textContent = r.title;
   $('resStars').textContent = r.stars > 0 ? '★'.repeat(r.stars) + '☆'.repeat(3-r.stars) : '—';
   $('resPts').textContent = '+' + r.pts;
+  // session best for this hunt
+  const prev = bestPerHunt[levelIdx];
+  if (r.pts > prev) {
+    bestPerHunt[levelIdx] = r.pts;
+    $('resBest').textContent = prev >= 0 ? '🏅 NEW BEST for this hunt! (was ' + prev + ')' : '';
+  } else {
+    $('resBest').textContent = 'Your best on this hunt: ' + prev + ' pts';
+  }
   $('resDesc').textContent = r.desc;
   $('resTap').textContent = levelIdx < LEVELS.length-1 ? 'Tap for the next hunt' : 'Tap to see your final tally';
   resultPanel.classList.remove('hidden');
@@ -1082,6 +1095,14 @@ function showGameOver() {
   $('resTitle').textContent = 'THE HUNT IS OVER';
   $('resStars').textContent = '🏆';
   $('resPts').textContent = totalScore + ' / ' + max;
+  // session record
+  if (totalScore > sessionBest) {
+    const prev = sessionBest;
+    sessionBest = totalScore;
+    $('resBest').textContent = prev > 0 ? '🏆 NEW SESSION RECORD! (old record: ' + prev + ')' : '🏆 Session record set: ' + totalScore + ' pts';
+  } else {
+    $('resBest').textContent = 'Session record: ' + sessionBest + ' pts — so close!';
+  }
   $('resDesc').textContent = 'Your rank: ' + rank + '. Ten hunts, from cottontail to black bear. Tap to head back to camp and start a fresh season.';
   $('resTap').textContent = 'Tap to play again';
   resultPanel.classList.remove('hidden');
