@@ -806,6 +806,7 @@ function fire() {
   B.result = judge(missDist);
   B.resultMiss = missDist;
   B.offX = off.x; B.offY = off.y;
+  B.animalType = LEVELS[levelIdx].type;
   B.vitalR = animalGroup.userData.vitalR;
   B.mirror = Math.cos(animalGroup.rotation.y) >= 0 ? -1 : 1; // diagram always faces left
 
@@ -867,47 +868,179 @@ function impact() {
   B.linger = { drop:2.4, stagger:3.4, flail:3.6, flee:2.2 }[animalAnim.kind];
 }
 
-// ---------- Shot placement diagram ----------
-function renderVitalsDiagram(offX, offY, vitalR, mirror) {
-  const R = 26;                 // px radius representing vitalR
-  const vx = 118, vy = 104;     // vital center on the diagram
+// ---------- Shot placement diagram (species-accurate, all facing left) ----------
+function dgLeg(x, y1, y2, w, f, st) {
+  return '<rect x="'+x+'" y="'+y1+'" width="'+w+'" height="'+(y2-y1)+'" rx="'+(w/2)+'" fill="'+f+'" stroke="'+st+'"/>';
+}
+function dgAnatomy(type) {
+  const bone = '#d8cdb0';
+  switch (type) {
+    case 'rabbit': { const f='#9a8468', st='#6e5c48';
+      return { vx:128, vy:116, R:24, spine:'M96 76 Q160 66 226 92', spineLbl:[160,58], sil:
+        '<ellipse cx="92" cy="46" rx="8" ry="26" fill="'+f+'" stroke="'+st+'" transform="rotate(-10 92 46)"/>' +
+        '<ellipse cx="110" cy="48" rx="8" ry="26" fill="'+f+'" stroke="'+st+'" transform="rotate(10 110 48)"/>' +
+        '<ellipse cx="92" cy="44" rx="3.5" ry="18" fill="#d89aa0" transform="rotate(-10 92 44)"/>' +
+        '<circle cx="196" cy="126" r="40" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="152" cy="122" rx="66" ry="42" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="94" cy="92" rx="25" ry="21" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        dgLeg(104,148,170,9,f,st) + dgLeg(176,158,172,30,f,st) +
+        '<circle cx="236" cy="112" r="12" fill="#f0ece0" stroke="'+st+'"/>' +
+        '<circle cx="84" cy="86" r="3" fill="#222"/><circle cx="72" cy="96" r="3" fill="#d89aa0"/>' };
+    }
+    case 'pheasant': { const f='#8a5a2a', st='#5e3c1a';
+      return { vx:136, vy:110, R:21, spine:'M104 88 Q150 76 200 98', spineLbl:[150,68], sil:
+        '<polygon points="202,104 278,76 282,86 206,118" fill="#7a4a22" stroke="'+st+'"/>' +
+        '<polygon points="202,110 274,96 274,104 204,122" fill="#5e3c1a" stroke="'+st+'"/>' +
+        '<ellipse cx="150" cy="112" rx="56" ry="33" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="152" cy="106" rx="34" ry="18" fill="#6e4520" stroke="'+st+'"/>' +
+        '<polygon points="102,96 94,68 108,64 118,98" fill="#2a5a3a" stroke="'+st+'"/>' +
+        '<circle cx="96" cy="62" r="13" fill="#2a5a3a" stroke="'+st+'" stroke-width="2"/>' +
+        '<rect x="92" y="73" width="16" height="5" rx="2.5" fill="#f0f0e8"/>' +
+        '<circle cx="89" cy="59" r="5" fill="#c03030"/>' +
+        '<polygon points="84,60 71,64 84,67" fill="#d8a830" stroke="'+st+'"/>' +
+        '<line x1="140" y1="142" x2="140" y2="168" stroke="#9a8a4a" stroke-width="3"/>' +
+        '<line x1="158" y1="143" x2="158" y2="168" stroke="#9a8a4a" stroke-width="3"/>' +
+        '<circle cx="99" cy="58" r="2.5" fill="#222"/>' };
+    }
+    case 'turkey': { const f='#3a2e26', st='#241c16';
+      return { vx:136, vy:114, R:23, spine:'M106 92 Q148 78 198 102', spineLbl:[148,70], sil:
+        '<polygon points="205,112 236,30 252,38" fill="#7a4a22" stroke="#5a3618"/>' +
+        '<polygon points="205,112 262,48 272,60" fill="#7a4a22" stroke="#5a3618"/>' +
+        '<polygon points="205,112 276,76 280,90" fill="#7a4a22" stroke="#5a3618"/>' +
+        '<polygon points="205,112 278,104 276,120" fill="#7a4a22" stroke="#5a3618"/>' +
+        '<ellipse cx="148" cy="116" rx="54" ry="40" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="150" cy="112" rx="32" ry="22" fill="#2c221c" stroke="'+st+'"/>' +
+        '<polygon points="104,100 96,66 110,62 120,102" fill="#8a8a9a" stroke="'+st+'"/>' +
+        '<circle cx="98" cy="58" r="11" fill="#8a8a9a" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="100" cy="73" rx="4" ry="8" fill="#c03030"/>' +
+        '<polygon points="88,56 76,60 88,62" fill="#d8a830" stroke="'+st+'"/>' +
+        '<line x1="116" y1="138" x2="121" y2="156" stroke="#1a1410" stroke-width="3"/>' +
+        '<line x1="136" y1="152" x2="136" y2="178" stroke="#9a8a4a" stroke-width="3"/>' +
+        '<line x1="160" y1="153" x2="160" y2="178" stroke="#9a8a4a" stroke-width="3"/>' +
+        '<circle cx="101" cy="55" r="2.5" fill="#222"/>' };
+    }
+    case 'fox': { const f='#b5562a', st='#7e3a1a';
+      return { vx:112, vy:108, R:21, spine:'M84 86 Q148 74 218 98', spineLbl:[148,66], sil:
+        '<ellipse cx="238" cy="124" rx="40" ry="15" fill="'+f+'" stroke="'+st+'" transform="rotate(-18 238 124)"/>' +
+        '<circle cx="272" cy="112" r="10" fill="#f0ece2" stroke="'+st+'"/>' +
+        dgLeg(100,134,172,9,'#2a2018',st) + dgLeg(120,136,172,9,'#2a2018',st) +
+        dgLeg(178,134,172,9,'#2a2018',st) + dgLeg(198,136,172,9,'#2a2018',st) +
+        '<ellipse cx="148" cy="112" rx="70" ry="30" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="96" cy="118" rx="12" ry="14" fill="#e8e0d0"/>' +
+        '<polygon points="70,76 78,52 88,78" fill="'+f+'" stroke="'+st+'"/>' +
+        '<polygon points="88,74 98,52 106,78" fill="'+f+'" stroke="'+st+'"/>' +
+        '<ellipse cx="76" cy="90" rx="18" ry="15" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<polygon points="62,86 42,96 64,100" fill="'+f+'" stroke="'+st+'"/>' +
+        '<circle cx="44" cy="96" r="3" fill="#222"/><circle cx="70" cy="86" r="3" fill="#222"/>' };
+    }
+    case 'coyote': { const f='#8a7a5e', st='#5e5240';
+      return { vx:112, vy:102, R:22, spine:'M80 78 Q150 66 222 92', spineLbl:[150,58], sil:
+        '<ellipse cx="236" cy="124" rx="30" ry="11" fill="'+f+'" stroke="'+st+'" transform="rotate(-30 236 124)"/>' +
+        dgLeg(100,130,178,10,f,st) + dgLeg(122,132,178,10,f,st) +
+        dgLeg(182,130,178,10,f,st) + dgLeg(204,132,178,10,f,st) +
+        '<ellipse cx="150" cy="104" rx="74" ry="32" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="150" cy="124" rx="56" ry="13" fill="#cbbf9e"/>' +
+        '<polygon points="64,66 72,42 84,70" fill="'+f+'" stroke="'+st+'"/>' +
+        '<polygon points="84,64 94,44 100,70" fill="'+f+'" stroke="'+st+'"/>' +
+        '<ellipse cx="70" cy="82" rx="19" ry="15" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<polygon points="56,80 34,90 58,94" fill="'+f+'" stroke="'+st+'"/>' +
+        '<circle cx="36" cy="90" r="3" fill="#222"/><circle cx="64" cy="78" r="3" fill="#222"/>' };
+    }
+    case 'deer': { const f='#a8835a', st='#6e5236';
+      return { vx:118, vy:104, R:26, spine:'M74 60 Q160 46 244 70', spineLbl:[160,40], sil:
+        '<path d="M52 50 L44 18 M48 34 L32 26 M48 34 L58 14" stroke="'+bone+'" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+        dgLeg(92,138,186,13,f,st) + dgLeg(118,140,186,13,f,st) +
+        dgLeg(196,138,186,13,f,st) + dgLeg(220,140,186,13,f,st) +
+        '<ellipse cx="160" cy="103" rx="88" ry="46" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="236" cy="96" rx="16" ry="13" fill="#e8e2d2"/>' +
+        '<polygon points="74,82 100,66 118,92 88,110" fill="'+f+'" stroke="'+st+'"/>' +
+        '<ellipse cx="56" cy="68" rx="26" ry="19" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<polygon points="62,52 76,32 82,54" fill="'+f+'" stroke="'+st+'"/>' +
+        '<polygon points="246,88 266,80 250,104" fill="#e8e2d2" stroke="'+st+'"/>' +
+        '<circle cx="46" cy="64" r="3" fill="#222"/>' };
+    }
+    case 'boar': { const f='#4a3c32', st='#2e2620';
+      return { vx:116, vy:116, R:24, spine:'M82 84 Q160 66 240 92', spineLbl:[160,58], sil:
+        dgLeg(100,150,186,14,f,st) + dgLeg(126,152,186,14,f,st) +
+        dgLeg(192,150,186,14,f,st) + dgLeg(216,152,186,14,f,st) +
+        '<ellipse cx="158" cy="118" rx="85" ry="42" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<path d="M82 86 L92 78 L102 84 L112 76 L122 82 L132 75 L142 81 L152 74 L162 80" stroke="#2e2620" stroke-width="4" fill="none"/>' +
+        '<polygon points="95,86 40,112 50,132 98,144" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<circle cx="44" cy="121" r="7" fill="#2e2620"/>' +
+        '<polyline points="54,128 44,138" stroke="#eae2cc" stroke-width="4" stroke-linecap="round" fill="none"/>' +
+        '<polygon points="92,84 104,64 114,88" fill="'+f+'" stroke="'+st+'"/>' +
+        '<path d="M242 102 q14 -4 10 12" stroke="'+st+'" stroke-width="3" fill="none"/>' +
+        '<circle cx="62" cy="106" r="3" fill="#111"/>' };
+    }
+    case 'elk': { const f='#7d6243', st='#52402c';
+      return { vx:118, vy:104, R:26, spine:'M74 60 Q160 46 244 70', spineLbl:[160,38], sil:
+        '<path d="M52 48 L40 8 M46 30 L26 18 M46 30 L60 10 M43 18 L30 4 M43 18 L54 2" stroke="'+bone+'" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+        dgLeg(92,138,188,13,f,st) + dgLeg(118,140,188,13,f,st) +
+        dgLeg(196,138,188,13,f,st) + dgLeg(220,140,188,13,f,st) +
+        '<ellipse cx="160" cy="103" rx="88" ry="46" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="234" cy="94" rx="17" ry="14" fill="#d8c8a0"/>' +
+        '<polygon points="74,82 100,66 118,92 88,110" fill="#4a3424" stroke="'+st+'"/>' +
+        '<ellipse cx="56" cy="68" rx="26" ry="19" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<polygon points="62,52 76,32 82,54" fill="'+f+'" stroke="'+st+'"/>' +
+        '<circle cx="46" cy="64" r="3" fill="#222"/>' };
+    }
+    case 'moose': { const f='#4e3a28', st='#33261a';
+      return { vx:116, vy:100, R:27, spine:'M78 54 Q160 40 248 66', spineLbl:[164,32], sil:
+        '<path d="M70 44 Q52 10 84 16 Q106 20 90 46 Z" fill="'+bone+'" stroke="#b8a888" stroke-width="2"/>' +
+        '<path d="M74 40 L66 22 M82 38 L82 20" stroke="#b8a888" stroke-width="3" fill="none"/>' +
+        dgLeg(92,134,192,15,f,st) + dgLeg(120,136,192,15,f,st) +
+        dgLeg(196,134,192,15,f,st) + dgLeg(222,136,192,15,f,st) +
+        '<ellipse cx="162" cy="98" rx="90" ry="50" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="120" cy="60" rx="30" ry="17" fill="'+f+'" stroke="'+st+'"/>' +
+        '<polygon points="78,76 108,58 122,92 88,108" fill="'+f+'" stroke="'+st+'"/>' +
+        '<ellipse cx="54" cy="74" rx="28" ry="18" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="36" cy="86" rx="14" ry="10" fill="'+f+'" stroke="'+st+'"/>' +
+        '<polygon points="58,90 68,118 50,94" fill="'+f+'" stroke="'+st+'"/>' +
+        '<circle cx="42" cy="70" r="3" fill="#222"/>' };
+    }
+    case 'bear': { const f='#3a3028', st='#221c16';
+      return { vx:116, vy:106, R:26, spine:'M80 62 Q160 48 244 72', spineLbl:[162,40], sil:
+        dgLeg(96,146,190,18,f,st) + dgLeg(126,148,190,18,f,st) +
+        dgLeg(190,146,190,18,f,st) + dgLeg(218,148,190,18,f,st) +
+        '<ellipse cx="158" cy="108" rx="90" ry="52" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="118" cy="62" rx="26" ry="16" fill="'+f+'" stroke="'+st+'"/>' +
+        '<circle cx="50" cy="58" r="8" fill="'+f+'" stroke="'+st+'"/>' +
+        '<circle cx="76" cy="54" r="8" fill="'+f+'" stroke="'+st+'"/>' +
+        '<circle cx="64" cy="80" r="24" fill="'+f+'" stroke="'+st+'" stroke-width="2"/>' +
+        '<ellipse cx="44" cy="88" rx="12" ry="8" fill="#6e5a44" stroke="'+st+'"/>' +
+        '<circle cx="36" cy="86" r="3.5" fill="#111"/><circle cx="56" cy="74" r="3" fill="#111"/>' };
+    }
+  }
+}
+function renderVitalsDiagram(offX, offY, vitalR, mirror, type) {
+  const A = dgAnatomy(type) || dgAnatomy('deer');
+  const vx = A.vx, vy = A.vy, R = A.R;
   const s = R / vitalR;
   let hx = vx + mirror * offX * s;
   let hy = vy - offY * s;       // SVG y points down
   hx = Math.max(14, Math.min(286, hx));
   hy = Math.max(14, Math.min(186, hy));
-  const bodyC = '#a8835a', bodyS = '#6e5236';
+  const lx = vx + R*1.3, ly = vy + R*0.28;   // liver
+  const sx = vx + R*2.5, sy = vy + R*0.30;   // stomach
   $('vitalsWrap').innerHTML =
     '<div class="vtitle">SHOT PLACEMENT</div>' +
     '<svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">' +
-      // legs
-      '<rect x="92" y="138" width="13" height="48" rx="5" fill="'+bodyC+'" stroke="'+bodyS+'"/>' +
-      '<rect x="118" y="140" width="13" height="46" rx="5" fill="'+bodyC+'" stroke="'+bodyS+'"/>' +
-      '<rect x="196" y="138" width="13" height="48" rx="5" fill="'+bodyC+'" stroke="'+bodyS+'"/>' +
-      '<rect x="220" y="140" width="13" height="46" rx="5" fill="'+bodyC+'" stroke="'+bodyS+'"/>' +
-      // body + head + ear + tail (facing left)
-      '<ellipse cx="160" cy="103" rx="92" ry="50" fill="'+bodyC+'" stroke="'+bodyS+'" stroke-width="2"/>' +
-      '<ellipse cx="56" cy="66" rx="27" ry="20" fill="'+bodyC+'" stroke="'+bodyS+'" stroke-width="2"/>' +
-      '<polygon points="60,48 70,28 78,50" fill="'+bodyC+'" stroke="'+bodyS+'"/>' +
-      '<polygon points="248,90 268,80 252,104" fill="'+bodyC+'" stroke="'+bodyS+'"/>' +
-      '<circle cx="46" cy="62" r="3" fill="#222"/>' +
-      // organs
-      '<ellipse cx="190" cy="112" rx="34" ry="25" fill="#7d9a4a" opacity=".95"/>' +          // stomach
-      '<ellipse cx="150" cy="112" rx="19" ry="17" fill="#6e3a28" opacity=".95"/>' +          // liver
-      '<ellipse cx="'+vx+'" cy="'+vy+'" rx="'+(R*1.05)+'" ry="'+(R*0.95)+'" fill="#d98a8a" opacity=".95"/>' + // lungs
-      '<circle cx="'+vx+'" cy="'+vy+'" r="'+(R*0.4)+'" fill="#b81f1f"/>' +                   // heart
-      '<path d="M74 60 Q160 46 244 70" fill="none" stroke="#e8dcc0" stroke-width="4" opacity=".9"/>' + // spine
+      A.sil +
+      // organs (scaled to this species' kill zone)
+      '<ellipse cx="'+sx+'" cy="'+sy+'" rx="'+(R*1.25)+'" ry="'+(R*0.95)+'" fill="#7d9a4a" opacity=".95"/>' +
+      '<ellipse cx="'+lx+'" cy="'+ly+'" rx="'+(R*0.72)+'" ry="'+(R*0.62)+'" fill="#6e3a28" opacity=".95"/>' +
+      '<ellipse cx="'+vx+'" cy="'+vy+'" rx="'+(R*1.05)+'" ry="'+(R*0.95)+'" fill="#d98a8a" opacity=".95"/>' +
+      '<circle cx="'+vx+'" cy="'+vy+'" r="'+(R*0.4)+'" fill="#b81f1f"/>' +
+      '<path d="'+A.spine+'" fill="none" stroke="#e8dcc0" stroke-width="4" opacity=".9"/>' +
       // kill-zone ring
       '<circle cx="'+vx+'" cy="'+vy+'" r="'+R+'" fill="none" stroke="#fff" stroke-width="1.2" stroke-dasharray="4 4" opacity=".75"/>' +
       // labels
       '<g font-size="11" fill="#fff" font-family="Georgia,serif" text-anchor="middle" style="text-shadow:0 1px 3px #000">' +
-        '<text x="'+vx+'" y="'+(vy+R+22)+'">Heart &amp; Lungs</text>' +
-        '<text x="150" y="148">Liver</text>' +
-        '<text x="196" y="92">Stomach</text>' +
-        '<text x="160" y="42">Spine</text>' +
+        '<text x="'+vx+'" y="'+(vy+R+20)+'">Heart &amp; Lungs</text>' +
+        '<text x="'+lx+'" y="'+(ly+R*0.62+16)+'">Liver</text>' +
+        '<text x="'+sx+'" y="'+(sy-R*0.95-8)+'">Stomach</text>' +
+        '<text x="'+A.spineLbl[0]+'" y="'+A.spineLbl[1]+'">Spine</text>' +
       '</g>' +
-      '<line x1="160" y1="46" x2="160" y2="55" stroke="#fff" opacity=".7"/>' +
-      '<line x1="150" y1="138" x2="150" y2="124" stroke="#fff" opacity=".7"/>' +
       // hit marker
       '<g stroke="#ffd027" stroke-width="2.5" fill="none">' +
         '<circle cx="'+hx+'" cy="'+hy+'" r="8"/>' +
@@ -924,7 +1057,7 @@ function showResult() {
   state = S.RESULT;
   cineEl.style.opacity = 0;
   const r = B.result;
-  renderVitalsDiagram(B.offX, B.offY, B.vitalR, B.mirror);
+  renderVitalsDiagram(B.offX, B.offY, B.vitalR, B.mirror, B.animalType);
   totalScore += r.pts;
   $('resTitle').textContent = r.title;
   $('resStars').textContent = r.stars > 0 ? '★'.repeat(r.stars) + '☆'.repeat(3-r.stars) : '—';
