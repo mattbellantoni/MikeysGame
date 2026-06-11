@@ -147,7 +147,7 @@
   <div class="wopt" data-w="shotgun" title="Shotgun">&#128165;</div>
 </div>
 
-<div id="verBadge">v1.42</div>
+<div id="verBadge">v1.43</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -1700,18 +1700,78 @@ function girlfriendUpdate(dt, t) {
   const home = gud.home;
   const goodCeleb = state === S.CELEB && celeb && !celeb.finale && SAD_CELEBS.indexOf(celeb.kind) === -1;
   if (goodCeleb) {
-    // she comes in for the hug and a kiss
-    const k = Math.min(1, celeb.t / 0.8);
-    girlfriend.position.x = home.x + (1.50 - home.x) * k;
-    girlfriend.position.z = home.z + (2.62 - home.z) * k;
-    girlfriend.position.y = hunterY;
-    girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * k; // turns to face him
-    girlfriend.rotation.z = 0.30 * k + (celeb.t > 1.4 ? Math.abs(Math.sin(celeb.t*3)) * 0.06 : 0); // leans in, little pecks
-    gud.arms[0].rotation.x = 0.95 * k; // arms wrapped around him
-    gud.arms[1].rotation.x = 0.95 * k;
-    gud.arms[0].rotation.z = 0.35 * k;
-    gud.arms[1].rotation.z = -0.35 * k;
-    if (celeb.t > 1.5 && !celeb.kissed) { celeb.kissed = true; kissSound(); setTimeout(kissSound, 700); }
+    const ct = celeb.t;
+    const A0 = gud.arms[0].rotation, A1 = gud.arms[1].rotation;
+    const k = Math.min(1, ct / 0.8);
+    switch (celeb.gf) {
+      case 'jump': { // bouncing on the spot, arms to the sky
+        const hop = Math.abs(Math.sin(ct*6));
+        girlfriend.position.y = hunterY + hop * 0.30;
+        girlfriend.rotation.y += ((home.rotY - 0.5) - girlfriend.rotation.y) * Math.min(1, dt*4);
+        A0.z = 1.8 + Math.sin(ct*6)*0.4;
+        A1.z = -1.8 - Math.sin(ct*6)*0.4;
+        if (!celeb.gfSnd) { celeb.gfSnd = true; giggleSound(); }
+        break;
+      }
+      case 'cheer': { // full pep-squad routine: alternating high-Vs and hip sways
+        girlfriend.position.y = hunterY + Math.abs(Math.sin(ct*4)) * 0.12;
+        girlfriend.rotation.z = Math.sin(ct*4) * 0.12;
+        A0.z = 1.2 + Math.max(0, Math.sin(ct*5)) * 1.2;
+        A1.z = -1.2 - Math.max(0, -Math.sin(ct*5)) * 1.2;
+        if (!celeb.gfSnd && ct > 0.3) { celeb.gfSnd = true; celebSound('fistpump'); setTimeout(giggleSound, 600); }
+        break;
+      }
+      case 'twirl': { // delighted spins, then a quick squeeze
+        if (ct < 1.5) {
+          girlfriend.rotation.y = home.rotY + ct * 8.4; // two happy turns
+          girlfriend.position.y = hunterY + Math.abs(Math.sin(ct*5)) * 0.06;
+          A0.x = -1.2; A1.x = 1.2; // arms out wide
+        } else {
+          const k2 = Math.min(1, (ct - 1.5) / 0.5);
+          girlfriend.rotation.y = -Math.PI/2;
+          girlfriend.position.x = home.x + (1.50 - home.x) * k2;
+          girlfriend.position.z = home.z + (2.62 - home.z) * k2;
+          girlfriend.rotation.z = 0.30 * k2;
+          A0.x = 0.95 * k2; A1.x = 0.95 * k2;
+          if (!celeb.gfSnd && k2 >= 1) { celeb.gfSnd = true; kissSound(); }
+        }
+        break;
+      }
+      case 'kissattack': { // rushes in and covers him in kisses
+        const kf = Math.min(1, ct / 0.45);
+        girlfriend.position.x = home.x + (1.48 - home.x) * kf;
+        girlfriend.position.z = home.z + (2.58 - home.z) * kf;
+        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * kf;
+        girlfriend.rotation.z = 0.34 * kf + (ct > 0.5 ? Math.abs(Math.sin(ct*8)) * 0.10 : 0); // rapid-fire pecks
+        A0.x = 0.9 * kf; A1.x = 0.9 * kf; // hands holding his face
+        const due = 0.7 + (celeb.kissN || 0) * 0.5;
+        if (ct > due && ct < celeb.dur - 0.4) { celeb.kissN = (celeb.kissN || 0) + 1; kissSound(); }
+        break;
+      }
+      case 'lapjump': { // a running hop straight onto his lap
+        const k2 = Math.min(1, Math.max(0, (ct - 0.3) / 0.8));
+        if (!celeb.gStart) celeb.gStart = { x: girlfriend.position.x, z: girlfriend.position.z };
+        girlfriend.position.x = celeb.gStart.x + (1.38 - celeb.gStart.x) * k2;
+        girlfriend.position.z = celeb.gStart.z + (2.55 - celeb.gStart.z) * k2;
+        girlfriend.position.y = k2 < 1
+          ? hunterY + Math.sin(k2*Math.PI) * 0.7 + 0.60 * k2
+          : hunterY + 0.60 + Math.abs(Math.sin(ct*6)) * 0.04;
+        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * k2;
+        girlfriend.rotation.x = -0.3 * k2;
+        if (k2 >= 1 && !celeb.gfSnd) { celeb.gfSnd = true; giggleSound(); setTimeout(kissSound, 500); }
+        break;
+      }
+      default: { // 'hugkiss': the classic — comes in, wraps him up, two kisses
+        girlfriend.position.x = home.x + (1.50 - home.x) * k;
+        girlfriend.position.z = home.z + (2.62 - home.z) * k;
+        girlfriend.position.y = hunterY;
+        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * k;
+        girlfriend.rotation.z = 0.30 * k + (ct > 1.4 ? Math.abs(Math.sin(ct*3)) * 0.06 : 0);
+        A0.x = 0.95 * k; A1.x = 0.95 * k;
+        A0.z = 0.35 * k; A1.z = -0.35 * k;
+        if (ct > 1.5 && !celeb.kissed) { celeb.kissed = true; kissSound(); setTimeout(kissSound, 700); }
+      }
+    }
   } else if (state === S.CELEB && celeb && celeb.finale) {
     // finale: handled in celebUpdate — she's headed for his lap
   } else {
@@ -1757,6 +1817,9 @@ function startCeleb() {
   else                kind = SAD_CELEBS[Math.floor(Math.random()*SAD_CELEBS.length)]; // it got away
   const dur = { joint:6.2, rifleraise:3.0, fistpump:2.8, doublefist:3.0, wave:3.0, clap:2.8, hattip:2.6, spin360:3.4, wheelie:3.6, shrug:2.4, facepalm:2.6, headhang:2.8, armslam:2.8 }[kind];
   celeb = { kind, t:0, dur, smokeT:0, fwT:0.3 };
+  // his girl picks her own reaction every time
+  const GF_CELEBS = ['hugkiss', 'jump', 'kissattack', 'lapjump', 'cheer', 'twirl'];
+  if (pts >= 50) celeb.gf = GF_CELEBS[Math.floor(Math.random() * GF_CELEBS.length)];
   if (kind === 'joint') spawnParty(); // perfection deserves a party
   celebSound(kind);
 }
