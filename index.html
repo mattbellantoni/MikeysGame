@@ -32,13 +32,13 @@
   #hint { bottom:30px; left:0; right:0; text-align:center; color:#fff; font-size:19px; text-shadow:0 2px 8px rgba(0,0,0,.9); transition:opacity .4s; }
   #hint .big { font-size:23px; font-weight:bold; }
 
-  /* Scope */
-  #scope { opacity:0; transition:opacity .25s; }
+  /* Scope — centered on --cx/--cy, which JS pins to the true projected aim point */
+  #scope { opacity:0; transition:opacity .25s; --cx:50%; --cy:50%; }
   #scope .mask { position:absolute; inset:0;
-    background:radial-gradient(circle 38vmin at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 91%, rgba(0,0,0,.55) 94%, rgba(5,8,5,.985) 100%); }
-  #scope .ring { position:absolute; left:50%; top:50%; width:72vmin; height:72vmin; transform:translate(-50%,-50%);
+    background:radial-gradient(circle 38vmin at var(--cx) var(--cy), rgba(0,0,0,0) 0%, rgba(0,0,0,0) 91%, rgba(0,0,0,.55) 94%, rgba(5,8,5,.985) 100%); }
+  #scope .ring { position:absolute; left:var(--cx); top:var(--cy); width:72vmin; height:72vmin; transform:translate(-50%,-50%);
     border-radius:50%; border:3px solid rgba(0,0,0,.9); box-shadow:inset 0 0 60px rgba(0,0,0,.65), inset 0 0 8px rgba(120,255,120,.12); }
-  .xh { position:absolute; left:50%; top:50%; background:rgba(10,10,10,.92); }
+  .xh { position:absolute; left:var(--cx); top:var(--cy); background:rgba(10,10,10,.92); }
   .xh.h { width:64vmin; height:2px; transform:translate(-50%,-50%); }
   .xh.v { width:2px; height:64vmin; transform:translate(-50%,-50%); }
   .xh.dot { width:7px; height:7px; border-radius:50%; background:rgba(220,40,40,.95); transform:translate(-50%,-50%); box-shadow:0 0 6px rgba(255,60,60,.8); }
@@ -89,22 +89,22 @@
   }
   /* weapon-specific aim views */
   .aimview { position:absolute; inset:0; display:none; }
-  .vig { position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(0,0,0,.5) 100%); }
-  #aimBow .bowring { position:absolute; left:50%; top:50%; width:30vmin; height:30vmin; transform:translate(-50%,-50%);
+  .vig { position:absolute; inset:0; background:radial-gradient(ellipse at var(--cx) var(--cy), rgba(0,0,0,0) 52%, rgba(0,0,0,.5) 100%); }
+  #aimBow .bowring { position:absolute; left:var(--cx); top:var(--cy); width:30vmin; height:30vmin; transform:translate(-50%,-50%);
     border-radius:50%; border:5px solid rgba(18,18,18,.88); box-shadow:0 0 14px rgba(0,0,0,.45); }
-  #aimBow .pin { position:absolute; left:50%; width:9vmin; height:2px; background:rgba(18,18,18,.88); transform:translateX(-100%); }
+  #aimBow .pin { position:absolute; left:var(--cx); width:9vmin; height:2px; background:rgba(18,18,18,.88); transform:translateX(-100%); }
   #aimBow .pin::after { content:''; position:absolute; right:-0.9vmin; top:50%; transform:translateY(-50%);
     width:1.7vmin; height:1.7vmin; border-radius:50%; }
-  #aimBow .pin.p1 { top:calc(50% - 5vmin); } #aimBow .pin.p1::after { background:#39e639; box-shadow:0 0 7px #39e639; }
-  #aimBow .pin.p2 { top:50%; }              #aimBow .pin.p2::after { background:#ffd027; box-shadow:0 0 9px #ffd027; }
-  #aimBow .pin.p3 { top:calc(50% + 5vmin); } #aimBow .pin.p3::after { background:#ff5030; box-shadow:0 0 7px #ff5030; }
+  #aimBow .pin.p1 { top:calc(var(--cy) - 5vmin); } #aimBow .pin.p1::after { background:#39e639; box-shadow:0 0 7px #39e639; }
+  #aimBow .pin.p2 { top:var(--cy); }               #aimBow .pin.p2::after { background:#ffd027; box-shadow:0 0 9px #ffd027; }
+  #aimBow .pin.p3 { top:calc(var(--cy) + 5vmin); } #aimBow .pin.p3::after { background:#ff5030; box-shadow:0 0 7px #ff5030; }
   /* shotgun: looking straight down the barrels, bead on the rib is the only aim mark */
-  #aimShot .barrels { position:absolute; left:50%; top:calc(50% + 1.6vmin); bottom:-3vmin; width:80vmin;
+  #aimShot .barrels { position:absolute; left:var(--cx); top:calc(var(--cy) + 1.6vmin); bottom:-3vmin; width:80vmin;
     transform:translateX(-50%); border-radius:40vmin 40vmin 0 0;
     background:linear-gradient(180deg, rgba(34,36,38,.94), rgba(8,8,8,.97) 60%); }
-  #aimShot .rib { position:absolute; left:50%; top:calc(50% + 1.6vmin); bottom:0; width:1.1vmin;
+  #aimShot .rib { position:absolute; left:var(--cx); top:calc(var(--cy) + 1.6vmin); bottom:0; width:1.1vmin;
     transform:translateX(-50%); background:linear-gradient(180deg, rgba(90,94,98,.85), rgba(30,32,34,.9) 70%); }
-  #aimShot .bead { position:absolute; left:50%; top:50%; width:1.6vmin; height:1.6vmin; transform:translate(-50%,-50%);
+  #aimShot .bead { position:absolute; left:var(--cx); top:var(--cy); width:1.6vmin; height:1.6vmin; transform:translate(-50%,-50%);
     border-radius:50%; background:radial-gradient(circle at 35% 30%, #f2f4f6, #9aa0a6 65%, #5a6066);
     box-shadow:0 0 5px rgba(255,255,255,.55); }
   /* persistent weapon selector, left edge */
@@ -189,7 +189,7 @@
   </div>
 </div>
 
-<div id="verBadge">v1.52</div>
+<div id="verBadge">v1.54</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -2454,6 +2454,14 @@ function scopedCamera() {
   camera.position.copy(muzzleWorld);
   camera.lookAt(aim);
   camera.updateProjectionMatrix();
+  // pin the reticle to the TRUE projected aim point — immune to any canvas/viewport offset
+  camera.updateMatrixWorld();
+  const ndc = aim.clone().project(camera);
+  const rect = canvas.getBoundingClientRect();
+  const sx = rect.left + (ndc.x * 0.5 + 0.5) * rect.width;
+  const sy = rect.top + (-ndc.y * 0.5 + 0.5) * rect.height;
+  scopeEl.style.setProperty('--cx', sx.toFixed(1) + 'px');
+  scopeEl.style.setProperty('--cy', sy.toFixed(1) + 'px');
 }
 function bulletCamera(dt) {
   B.t += dt;
