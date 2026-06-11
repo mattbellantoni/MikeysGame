@@ -64,6 +64,22 @@
   .wbtn { margin:10px 0; font-size:22px; padding:18px 40px; min-width:320px; border:2px solid rgba(255,255,255,.85);
     border-radius:50px; background:rgba(40,70,40,.7); cursor:pointer; }
   .wbtn small { display:block; font-size:14px; opacity:.8; margin-top:3px; }
+  /* weapon-specific aim views */
+  .aimview { position:absolute; inset:0; display:none; }
+  .vig { position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(0,0,0,.5) 100%); }
+  #aimBow .bowring { position:absolute; left:50%; top:50%; width:30vmin; height:30vmin; transform:translate(-50%,-50%);
+    border-radius:50%; border:5px solid rgba(18,18,18,.88); box-shadow:0 0 14px rgba(0,0,0,.45); }
+  #aimBow .pin { position:absolute; left:50%; width:9vmin; height:2px; background:rgba(18,18,18,.88); transform:translateX(-100%); }
+  #aimBow .pin::after { content:''; position:absolute; right:-0.9vmin; top:50%; transform:translateY(-50%);
+    width:1.7vmin; height:1.7vmin; border-radius:50%; }
+  #aimBow .pin.p1 { top:calc(50% - 5vmin); } #aimBow .pin.p1::after { background:#39e639; box-shadow:0 0 7px #39e639; }
+  #aimBow .pin.p2 { top:50%; }              #aimBow .pin.p2::after { background:#ffd027; box-shadow:0 0 9px #ffd027; }
+  #aimBow .pin.p3 { top:calc(50% + 5vmin); } #aimBow .pin.p3::after { background:#ff5030; box-shadow:0 0 7px #ff5030; }
+  #aimShot .brl { position:absolute; bottom:-30vmin; width:46vmin; height:46vmin; border-radius:50%; background:rgba(14,14,14,.93); }
+  #aimShot .brl.l { left:calc(50% - 44vmin); }
+  #aimShot .brl.r { left:calc(50% - 2vmin); }
+  #aimShot .bead { position:absolute; left:50%; top:50%; width:2.2vmin; height:2.2vmin; transform:translate(-50%,-50%);
+    border-radius:50%; background:#f4c84a; box-shadow:0 0 9px rgba(244,200,74,.95), inset 0 -2px 3px rgba(120,80,10,.6); }
 </style>
 </head>
 <body>
@@ -74,11 +90,23 @@
   <div class="score"><div id="totScore">0 pts</div><div class="sub" id="lvlCount"></div><div class="sub" id="bestScore"></div></div>
 </div>
 
-<div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to look through the scope</div><div>Slide your finger forward to fire</div></div>
+<div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to take aim</div><div>Slide your finger forward to fire</div></div>
 
 <div class="overlay" id="scope">
-  <div class="mask"></div><div class="ring"></div>
-  <div class="xh h"></div><div class="xh v"></div><div class="xh dot"></div>
+  <div class="aimview" id="aimRifle">
+    <div class="mask"></div><div class="ring"></div>
+    <div class="xh h"></div><div class="xh v"></div><div class="xh dot"></div>
+  </div>
+  <div class="aimview" id="aimBow">
+    <div class="vig"></div>
+    <div class="bowring"></div>
+    <div class="pin p1"></div><div class="pin p2"></div><div class="pin p3"></div>
+  </div>
+  <div class="aimview" id="aimShot">
+    <div class="vig"></div>
+    <div class="brl l"></div><div class="brl r"></div>
+    <div class="bead"></div>
+  </div>
   <div id="fireHint">SLIDE FORWARD TO FIRE &#9650;</div>
   <div id="scopeInfo"></div>
 </div>
@@ -105,12 +133,13 @@
 
 <div class="panel hidden" id="weaponScreen">
   <h2>Choose your weapon</h2>
+  <p id="wsub" style="margin-bottom:10px"></p>
   <div class="wbtn" data-w="rifle">&#127919; Rifle<small>Flat-shooting and true at any range</small></div>
   <div class="wbtn" data-w="bow">&#127993; Bow<small>Silent, but the arrow arcs in flight</small></div>
   <div class="wbtn" data-w="shotgun">&#128165; Shotgun<small>Devastating up close, spreads wide at range</small></div>
 </div>
 
-<div id="verBadge">v1.18</div>
+<div id="verBadge">v1.19</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -190,11 +219,11 @@ const LEVELS = [
   { name:'Wild Turkey', type:'turkey', dist:60,  env:'autumnWood' },
   { name:'Red Fox', type:'fox', dist:80,  env:'foggyHollow' },
   { name:'Coyote', type:'coyote', dist:105, env:'duskRidge' },
-  { name:'Whitetail Deer', type:'deer', dist:135, env:'deepForest' },
+  { name:'Whitetail Deer', type:'deer', dist:135, env:'deepForest', stand:true },
   { name:'Wild Boar', type:'boar', dist:165, env:'stormPines' },
-  { name:'Rocky Mountain Elk', type:'elk', dist:205, env:'snowMountain' },
+  { name:'Rocky Mountain Elk', type:'elk', dist:205, env:'snowMountain', stand:true },
   { name:'Bull Moose', type:'moose', dist:255, env:'pinkDawn' },
-  { name:'Black Bear', type:'bear', dist:310, env:'moonlit' }
+  { name:'Black Bear', type:'bear', dist:310, env:'moonlit', stand:true }
 ];
 
 // ---------- Animal builders ----------
@@ -501,6 +530,7 @@ function buildHunter() {
 // ---------- World building ----------
 let worldGroup = null, animalGroup = null, snowPts = null, animalBlob = null;
 let bloodBits = [];
+let hunterY = 0; // 0 on the ground, 3.0 up in a tree stand
 let sunLight, ambLight, hemiLight;
 
 function pineTree(scale, env) {
@@ -631,9 +661,33 @@ function buildWorld(level) {
   animalBlob.rotation.x = -Math.PI/2; animalBlob.position.set(animalGroup.position.x, 0.02, animalGroup.position.z);
   worldGroup.add(animalBlob);
 
+  // elevated tree stand on the big hunts
+  hunterY = level.stand ? 3.0 : 0;
+  if (level.stand) {
+    const st = new THREE.Group();
+    const woodM = Mat(0x6e5230, { roughness:.85 });
+    P(st, new THREE.BoxGeometry(2.0, 0.12, 1.8), woodM, 0, 2.94, 0); // platform
+    [[-0.9,-0.8],[-0.9,0.8],[0.9,-0.8],[0.9,0.8]].forEach(p =>
+      P(st, new THREE.CylinderGeometry(0.07, 0.10, 3.0, 6), woodM, p[0], 1.5, p[1]));
+    P(st, new THREE.BoxGeometry(2.0, 0.07, 0.07), woodM, 0, 3.9, 0.85);  // back rail
+    P(st, new THREE.BoxGeometry(0.07, 0.07, 1.7), woodM, -0.95, 3.65, 0); // side rails
+    P(st, new THREE.BoxGeometry(0.07, 0.07, 1.7), woodM, 0.95, 3.65, 0);
+    for (const rx of [-0.95, 0.95]) for (const rz of [-0.8, 0.8])
+      P(st, new THREE.CylinderGeometry(0.03, 0.03, 0.85, 5), woodM, rx, 3.4, rz);
+    // ladder up the back
+    for (const lx of [-0.25, 0.25]) P(st, new THREE.CylinderGeometry(0.035, 0.035, 3.0, 5), woodM, lx, 1.5, 1.0);
+    for (let i=0;i<6;i++) P(st, new THREE.CylinderGeometry(0.025, 0.025, 0.55, 5), woodM, 0, 0.35 + i*0.5, 1.0, 0, 0, Math.PI/2);
+    // the big tree it leans on
+    P(st, new THREE.CylinderGeometry(0.38, 0.55, 9, 8), Mat(env.trunk), 0.2, 4.5, 1.9);
+    P(st, new THREE.ConeGeometry(2.6, 4.5, 8), Mat(env.tree), 0.2, 10.2, 1.9);
+    st.position.set(1.05, 0, 2.4);
+    worldGroup.add(st);
+  }
+
   scene.add(worldGroup);
 
   if (!hunterGroup) { hunterGroup = buildHunter(); }
+  hunterGroup.position.y = hunterY;
   scene.add(hunterGroup);
 }
 
@@ -661,30 +715,48 @@ function thumpSound(st, f0, f1, dur, vol) {
   const og = actx.createGain(); og.gain.setValueAtTime(vol, t); og.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
 }
+function pluck(st, freq, vol, dur, q) {
+  // resonant noise burst = plucked string / struck limb
+  const t = actx.currentTime + st;
+  const len = Math.floor(actx.sampleRate * dur);
+  const buf = actx.createBuffer(1, len, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<len;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 1.2);
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value = freq; bp.Q.value = q || 12;
+  const g = actx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(bp); bp.connect(g); g.connect(actx.destination); src.start(t);
+}
+function echoTaps(vol) {
+  // the shot rolling back off the treeline and hills
+  noiseBurst(0.18, 0.28, 900, vol*0.32, 2.0);
+  noiseBurst(0.45, 0.32, 600, vol*0.16, 2.0);
+  noiseBurst(0.80, 0.38, 380, vol*0.07, 2.0);
+}
 function gunshot() {
   if (!actx) return;
-  const t = actx.currentTime;
   if (weapon === 'bow') {
-    // string twang + release slap — nearly silent hunting
-    const o = actx.createOscillator(); o.type = 'triangle';
-    o.frequency.setValueAtTime(240, t);
-    o.frequency.exponentialRampToValueAtTime(150, t + 0.15);
-    const g = actx.createGain(); g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + 0.25);
-    noiseBurst(0, 0.05, 3200, 0.25, 1.5); // limb slap
+    // taut string release: deep resonant twang + harmonic + limb slap. Nearly silent in the woods.
+    pluck(0, 170, 0.9, 0.45, 14);
+    pluck(0, 340, 0.35, 0.30, 10);
+    noiseBurst(0, 0.04, 4200, 0.22, 1.2);
     return;
   }
   if (weapon === 'shotgun') {
-    // deep heavy boom with a long tail, then the pump racks a fresh shell
-    noiseBurst(0, 0.7, 950, 0.95, 2.2);
-    thumpSound(0, 95, 24, 0.45, 1.0);
-    noiseBurst(0.85, 0.05, 2200, 0.30, 1.2); // shk-
-    noiseBurst(1.02, 0.05, 2200, 0.30, 1.2); // -shk
+    // 12-gauge: violent muzzle blast + deep boom + sub punch, long echo, then the pump racks
+    noiseBurst(0, 0.10, 3800, 0.55, 1.4); // blast crack
+    noiseBurst(0, 0.85, 700, 1.0, 2.0);   // body of the boom
+    thumpSound(0, 70, 22, 0.6, 1.1);      // sub punch in the chest
+    echoTaps(0.85);
+    noiseBurst(1.0, 0.05, 2400, 0.30, 1.2);  // shk-
+    noiseBurst(1.17, 0.05, 2400, 0.30, 1.2); // -shk
     return;
   }
-  // rifle: sharp supersonic crack + chest thump
-  noiseBurst(0, 0.5, 2200, 0.7, 2.8);
-  thumpSound(0, 120, 38, 0.3, 0.8);
+  // rifle: supersonic crack + muzzle report + thump, rolling echo
+  noiseBurst(0, 0.05, 6000, 0.65, 1.2);
+  noiseBurst(0, 0.45, 1600, 0.6, 2.6);
+  thumpSound(0, 110, 35, 0.32, 0.75);
+  echoTaps(0.6);
 }
 // --- ambient wind (looped noise, gusting) ---
 let windStarted = false;
@@ -807,6 +879,7 @@ function dingSound(good) {
 
 // ---------- Game state ----------
 const S = { START:'start', WEAPON:'weapon', INTRO:'intro', IDLE:'idle', SCOPED:'scoped', BULLET:'bullet', CELEB:'celeb', RESULT:'result', OVER:'over' };
+let pendingLevel = 0; // hunt the weapon screen will launch
 let state = S.START;
 let introT = 0;
 const INTRO_DUR = 4.2;
@@ -876,7 +949,9 @@ function scopedFov() {
   const L = LEVELS[levelIdx];
   const span = animalGroup.userData.size * 5 + aimAmplitude()*4;
   let fov = 2 * Math.atan(span / L.dist) * 180 / Math.PI;
-  return Math.min(26, Math.max(2.2, fov));
+  // only the rifle has magnified glass; bow/shotgun aim with a wider natural view
+  fov *= weapon === 'rifle' ? 1 : (weapon === 'bow' ? 1.5 : 1.8);
+  return Math.min(34, Math.max(2.2, fov));
 }
 
 // ---------- Scoring ----------
@@ -1462,8 +1537,7 @@ function pressStart(y) {
   if (state === S.WEAPON) return;      // weapon buttons handle their own taps
   if (state === S.START) {
     startScreen.classList.add('hidden');
-    $('weaponScreen').classList.remove('hidden');
-    state = S.WEAPON;
+    showWeaponScreen(0);
     return;
   }
   if (state === S.INTRO) {             // tap skips the intro
@@ -1477,15 +1551,14 @@ function pressStart(y) {
   }
   if (state === S.RESULT) {
     resultPanel.classList.add('hidden');
-    if (levelIdx < LEVELS.length - 1) loadLevel(levelIdx + 1);
+    if (levelIdx < LEVELS.length - 1) showWeaponScreen(levelIdx + 1); // re-arm between hunts
     else showGameOver();
     return;
   }
   if (state === S.OVER) {
     totalScore = 0;
     resultPanel.classList.add('hidden');
-    $('weaponScreen').classList.remove('hidden'); // pick a weapon for the new season
-    state = S.WEAPON;
+    showWeaponScreen(0); // pick a weapon for the new season
     return;
   }
   if (state === S.IDLE) {
@@ -1495,6 +1568,10 @@ function pressStart(y) {
     pressing = true; pressStartY = y; fired = false;
     scopeEl.style.opacity = 1;
     hintEl.style.opacity = 0;
+    // weapon-appropriate aim view: scope only on the rifle
+    $('aimRifle').style.display = weapon === 'rifle' ? 'block' : 'none';
+    $('aimBow').style.display = weapon === 'bow' ? 'block' : 'none';
+    $('aimShot').style.display = weapon === 'shotgun' ? 'block' : 'none';
     $('scopeInfo').textContent = LEVELS[levelIdx].dist + ' YDS • ' + WEAPONS[weapon].label.toUpperCase() + ' • ' + LEVELS[levelIdx].name.toUpperCase();
   }
 }
@@ -1515,10 +1592,17 @@ window.addEventListener('touchstart', e => { e.preventDefault(); pressStart(e.to
 window.addEventListener('touchmove',  e => { e.preventDefault(); if (e.touches.length) pressMove(e.touches[0].clientY); }, { passive:false });
 window.addEventListener('touchend',   e => { e.preventDefault(); pressEnd(); }, { passive:false });
 window.addEventListener('touchcancel',e => { e.preventDefault(); pressEnd(); }, { passive:false });
-// weapon selection buttons (single tap)
+// weapon selection (shown before every hunt — single tap)
 function equipWeapon() {
   if (!hunterRefs) return;
   Object.keys(hunterRefs.weapons).forEach(k => { hunterRefs.weapons[k].visible = (k === weapon); });
+}
+function showWeaponScreen(idx) {
+  pendingLevel = idx;
+  const L = LEVELS[idx];
+  $('wsub').textContent = 'Hunt ' + (idx+1) + ' of ' + LEVELS.length + ': ' + L.name + ' at ' + L.dist + ' yds' + (L.stand ? ' — from the tree stand' : '');
+  $('weaponScreen').classList.remove('hidden');
+  state = S.WEAPON;
 }
 document.querySelectorAll('.wbtn').forEach(b => {
   const pick = e => {
@@ -1528,9 +1612,11 @@ document.querySelectorAll('.wbtn').forEach(b => {
     weapon = b.dataset.w;
     equipWeapon();
     $('weaponScreen').classList.add('hidden');
-    loadLevel(0);
-    state = S.INTRO; introT = 0;   // meet the hunter: 360 sweep
-    hintEl.style.opacity = 0;
+    loadLevel(pendingLevel);
+    if (pendingLevel === 0) { // meet the hunter: 360 sweep on the season opener
+      state = S.INTRO; introT = 0;
+      hintEl.style.opacity = 0;
+    }
   };
   b.addEventListener('touchstart', pick, { passive:false });
   b.addEventListener('mousedown', pick);
@@ -1542,24 +1628,24 @@ window.addEventListener('mouseup', pressEnd);
 // ---------- Camera rigs ----------
 function introCamera() {
   // full 360 sweep around the hunter
-  const c = new THREE.Vector3(1.05, 1.0, 2.4);
+  const c = new THREE.Vector3(1.05, hunterY + 1.0, 2.4);
   const a = Math.PI * 0.5 + (introT / INTRO_DUR) * Math.PI * 2;
   camera.fov = 46;
-  camera.position.set(c.x + Math.cos(a)*2.6, 1.45 + Math.sin(introT*1.2)*0.12, c.z + Math.sin(a)*2.6);
+  camera.position.set(c.x + Math.cos(a)*2.6, hunterY + 1.45 + Math.sin(introT*1.2)*0.12, c.z + Math.sin(a)*2.6);
   camera.lookAt(c);
   camera.updateProjectionMatrix();
 }
 function celebCamera() {
   // hunter faces +x; pull around to see his face
-  const c = new THREE.Vector3(1.05, 1.18, 2.4);
+  const c = new THREE.Vector3(1.05, hunterY + 1.18, 2.4);
   camera.fov = 40;
-  camera.position.set(c.x + 2.1, 1.45, c.z + 0.55 + Math.sin(celeb.t*0.5)*0.2);
+  camera.position.set(c.x + 2.1, hunterY + 1.45, c.z + 0.55 + Math.sin(celeb.t*0.5)*0.2);
   camera.lookAt(c);
   camera.updateProjectionMatrix();
 }
 function idleCamera(t) {
   camera.fov = 55;
-  camera.position.set(-0.9 + Math.sin(t*0.3)*0.05, 1.75 + Math.sin(t*0.45)*0.03, 4.6);
+  camera.position.set(-0.9 + Math.sin(t*0.3)*0.05, hunterY + 1.75 + Math.sin(t*0.45)*0.03, 4.6);
   const look = animalGroup ? animalGroup.position.clone() : new THREE.Vector3(0,1,-30);
   look.y += 0.5;
   camera.lookAt(look);
