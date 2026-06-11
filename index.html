@@ -98,7 +98,7 @@
   <div class="score"><div id="totScore">0 pts</div><div class="sub" id="lvlCount"></div><div class="sub" id="bestScore"></div></div>
 </div>
 
-<div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to take aim</div><div>Slide your finger forward to fire</div></div>
+<div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to take aim</div><div>Lift your finger to fire</div></div>
 
 <div class="overlay" id="scope">
   <div class="aimview" id="aimRifle">
@@ -116,7 +116,7 @@
     <div class="rib"></div>
     <div class="bead"></div>
   </div>
-  <div id="fireHint">SLIDE FORWARD TO FIRE &#9650;</div>
+  <div id="fireHint">HOLD STEADY &bull; LIFT FINGER TO FIRE</div>
   <div id="scopeInfo"></div>
 </div>
 
@@ -136,7 +136,7 @@
 <div class="panel" id="startScreen">
   <div class="logo">&#129420; MIKE'S BIG HUNT</div>
   <p style="font-size:22px">Welcome to Mike's Big Hunt.</p>
-  <p>Tap and hold the screen to take aim at your game. <b>Swipe up</b> when the crosshair is in the perfect spot. Enjoy the hunt!</p>
+  <p>Tap and hold the screen to take aim at your game. <b>Lift your finger</b> when the crosshair is in the perfect spot. Enjoy the hunt!</p>
   <div class="tap">Tap to start hunting</div>
   <div style="position:absolute;bottom:12px;left:0;right:0;font-size:11px;opacity:.5">Gunshot audio: &ldquo;Sniper Rifle&rdquo; Kibblesbob (Public Domain) &amp; &ldquo;Shotgun Blast&rdquo; Jim Rogers (CC BY 3.0) via SoundBible.com</div>
 </div>
@@ -147,7 +147,7 @@
   <div class="wopt" data-w="shotgun" title="Shotgun">&#128165;</div>
 </div>
 
-<div id="verBadge">v1.27</div>
+<div id="verBadge">v1.42</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -715,7 +715,9 @@ function buildWorld(level) {
       Mat(env.snow ? 0xdfe8ee : env.tree), gx, 0.15, gz);
   }
   for (let i=0;i<12;i++) {
-    const r = P(worldGroup, new THREE.SphereGeometry(rnd(.2,.6), 6, 5), Mat(0x7e7a72), rnd(-40,40), 0.1, rnd(-D*1.5, 5));
+    let rx = rnd(-40,40), rz = rnd(-D*1.5, 5);
+    if (Math.hypot(rx - 1.05, rz - 2.4) < 8) rx += Math.sign(rx || 1) * 10; // rocks clear of the hunter too
+    const r = P(worldGroup, new THREE.SphereGeometry(rnd(.2,.6), 6, 5), Mat(0x7e7a72), rx, 0.1, rz);
     r.scale.y = 0.55;
   }
 
@@ -726,6 +728,8 @@ function buildWorld(level) {
     let x = rnd(-90, 90);
     const laneHalf = 4 + Math.abs(z)*0.06; // lane widens with distance
     if (Math.abs(x) < laneHalf && z < -3 && z > -D - 25) x = Math.sign(x || 1) * (laneHalf + rnd(2, 30));
+    // keep a wide open clearing around the hunter — nothing blocking the camera
+    if (Math.hypot(x - 1.05, z - 2.4) < 14) x = Math.sign(x || 1) * (16 + rnd(0, 20));
     const s = rnd(1.6, 3.6) * (1 + Math.abs(z)/300);
     const tree = env.acacia ? acaciaTree(s*0.9, env)
       : (Math.random() < 0.75 || env.snow) ? pineTree(s, env) : leafTree(s*0.8, env);
@@ -819,6 +823,15 @@ function buildWorld(level) {
   if (!hunterGroup) { hunterGroup = buildHunter(); }
   hunterGroup.position.y = hunterY;
   scene.add(hunterGroup);
+
+  // his girlfriend — the redhead at his side, every hunt, every stand
+  if (!girlfriend) {
+    girlfriend = buildGirl(1, { hair:0xc8401a, kini:0x2ae8a0, skin:0xf0cfa8, iris:0x3aa05a }); // redhead, green eyes — one of a kind
+    girlfriend.userData.home = { x:1.52, z:3.05, rotY: Math.PI + 0.45 };
+    scene.add(girlfriend);
+  }
+  girlfriend.position.set(girlfriend.userData.home.x, hunterY, girlfriend.userData.home.z);
+  girlfriend.rotation.set(0, girlfriend.userData.home.rotY, 0);
 }
 
 // ---------- Audio ----------
@@ -1088,6 +1101,7 @@ function loadLevel(i) {
   bloodBits.forEach(b => scene.remove(b)); bloodBits = [];
   smokeParts.forEach(p => scene.remove(p)); smokeParts = [];
   fwParts.forEach(p => scene.remove(p)); fwParts = [];
+  chamParts.forEach(p => scene.remove(p)); chamParts = [];
   if (celebParty) { scene.remove(celebParty); celebParty = null; }
   setHUD();
   scopeEl.style.opacity = 0;
@@ -1100,8 +1114,36 @@ function loadLevel(i) {
 }
 function endFlyby() {
   cineEl.style.opacity = 0;
-  if (levelIdx === 0) { state = S.INTRO; introT = 0; } // season opener: meet the hunter
-  else { state = S.IDLE; hintEl.style.opacity = 1; }
+  state = S.IDLE;
+  hintEl.style.opacity = 1;
+}
+function startSeasonOpener() {
+  // right after "start hunting": the girls send him off, THEN the flyby sets the scene
+  loadLevel(0);
+  cineEl.style.opacity = 0;
+  state = S.INTRO; introT = 0;
+  hintEl.style.opacity = 0;
+  spawnParty();
+  if (actx) { celebSound('fistpump'); setTimeout(giggleSound, 700); }
+}
+function endIntro() {
+  clearParty(); // from here on it's just him and his girl — until he earns the party back
+  state = S.FLYBY; flybyT = 0;
+  cineEl.style.opacity = 1;
+}
+function clearParty() {
+  if (celebParty) { scene.remove(celebParty); celebParty = null; }
+}
+function cheerParty(ct) {
+  // jumping and waving — pure hype, nothing else
+  if (!celebParty) return;
+  celebParty.children.forEach(girl => {
+    const ud = girl.userData;
+    girl.position.y = Math.abs(Math.sin(ct*5 + ud.phase)) * 0.22;
+    girl.rotation.y += Math.sin(ct*2.2 + ud.phase) * 0.01;
+    ud.arms[0].rotation.z = 0.3 + Math.sin(ct*7 + ud.phase) * 0.5;
+    ud.arms[1].rotation.z = -0.3 + Math.sin(ct*7 + ud.phase + Math.PI) * 0.5;
+  });
 }
 
 // ---------- Aim model ----------
@@ -1464,29 +1506,122 @@ function renderVitalsDiagram(offX, offY, vitalR, mirror, type) {
 // ---------- The perfect-shot party ----------
 let celebParty = null;
 let fwParts = [];
-function buildGirl(i) {
+let girlfriend = null; // the redhead — she's with him the whole way
+function buildGirl(i, force) {
   const g = new THREE.Group();
   const skins = [0xeac093, 0xd9a06e, 0xb97a4e, 0xf0cfa8];
-  const hairs = [0x2a1c10, 0xe8c84a, 0x6e3a1a, 0x141414, 0xa83a1a];
+  const hairs = [0x2a1c10, 0xe8c84a, 0x6e3a1a, 0x141414, 0xe8e0d0]; // no reds — that's hers alone
   const kinis = [0xe83a6a, 0x38c0e8, 0xffd027, 0x9a4ae8, 0x3ae87a];
-  const skin = Mat(skins[i % skins.length]);
-  const kini = Mat(kinis[i % kinis.length]);
-  const hair = Mat(hairs[i % hairs.length]);
-  for (const s of [-1,1]) P(g, new THREE.CylinderGeometry(0.05, 0.04, 0.75, 7), skin, s*0.09, 0.375, 0); // legs
-  const hips = P(g, new THREE.SphereGeometry(0.14, 8, 6), kini, 0, 0.78, 0); hips.scale.set(1.1, 0.6, 0.9); // bikini bottom
-  P(g, new THREE.CylinderGeometry(0.10, 0.085, 0.34, 8), skin, 0, 1.0, 0); // waist
-  const chest = P(g, new THREE.SphereGeometry(0.115, 8, 6), kini, 0, 1.21, 0); chest.scale.set(1.05, 0.75, 0.85); // bikini top
-  P(g, new THREE.CylinderGeometry(0.03, 0.035, 0.08, 6), skin, 0, 1.32, 0); // neck
-  P(g, new THREE.SphereGeometry(0.085, 9, 7), skin, 0, 1.43, 0); // head
-  P(g, new THREE.SphereGeometry(0.09, 9, 7, 0, Math.PI*2, 0, Math.PI/1.8), hair, 0, 1.45, -0.005); // hair cap
-  P(g, new THREE.BoxGeometry(0.12, 0.30, 0.05), hair, 0, 1.30, -0.09); // hair down the back
+  // everything smooth-shaded and high-res so the curves read soft, not blocky
+  const skin = new THREE.MeshStandardMaterial({ color: (force && force.skin) || skins[i % skins.length], roughness:.58 });
+  const kini = new THREE.MeshStandardMaterial({ color: (force && force.kini) || kinis[i % kinis.length], roughness:.78 });
+  const hair = new THREE.MeshStandardMaterial({ color: (force && force.hair) || hairs[i % hairs.length], roughness:.72 });
+  const heel = new THREE.MeshStandardMaterial({ color:0x1a1a1a, roughness:.45 });
+  // ---- one continuous lathed body: hips through bust as a single smooth hourglass surface ----
+  const torsoPts = [
+    [0.055,0.70],[0.125,0.745],[0.163,0.805],[0.158,0.865],[0.118,0.94],[0.090,1.01],
+    [0.088,1.06],[0.108,1.12],[0.132,1.185],[0.122,1.245],[0.078,1.295],[0.042,1.33]
+  ].map(p => new THREE.Vector2(p[0], p[1])); // fuller through the bust line
+  const torso = P(g, new THREE.LatheGeometry(torsoPts, 28), skin, 0, 0, 0);
+  torso.scale.z = 0.80; // elliptical cross-section, front to back
+  // soft seat, mostly tucked into the lathe so it reads as one shape
+  for (const s of [-1,1]) P(g, new THREE.SphereGeometry(0.072, 16, 12), skin, s*0.048, 0.795, -0.072).scale.z = 0.95;
+  // legs: one smooth lathed taper each, ankle to hip — no segment seams
+  const legPts = [
+    [0.024,0.045],[0.034,0.10],[0.044,0.20],[0.050,0.30],[0.054,0.40],[0.060,0.50],
+    [0.067,0.60],[0.070,0.68],[0.058,0.745]
+  ].map(p => new THREE.Vector2(p[0], p[1]));
+  for (const s of [-1,1]) {
+    P(g, new THREE.LatheGeometry(legPts, 20), skin, s*0.078, 0, 0.004, 0, 0, s*0.035);
+    const hl = P(g, new THREE.SphereGeometry(0.05, 10, 8), heel, s*0.083, 0.028, 0.03);
+    hl.scale.set(0.62, 0.5, 1.2); // sleek heels
+  }
+  // bikini bottom: front and back coverage, with string ties over the hips
+  const btm = P(g, new THREE.SphereGeometry(0.170, 24, 18), kini, 0, 0.805, -0.004);
+  btm.scale.set(0.84, 0.55, 0.84); // narrower at the sides so the hip shows
+  for (const s of [-1,1]) {
+    // string curves over the hip, hugging the skin from front panel to back
+    const strPts = [];
+    for (let k = 0; k <= 4; k++) {
+      const th = (0.12 + 0.76 * (k/4)) * Math.PI;        // front edge → over the hip crest → back edge
+      const sag = Math.sin((k/4) * Math.PI) * 0.010;     // eases down over the crest like fabric under tension
+      strPts.push(new THREE.Vector3(Math.sin(th) * 0.170 * s, 0.852 - sag, Math.cos(th) * 0.137));
+    }
+    P(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(strPts), 16, 0.0075, 7), kini, 0, 0, 0);
+    P(g, new THREE.SphereGeometry(0.014, 8, 6), kini, s*0.166, 0.846, 0.045); // little side knot
+  }
+  // bikini top: round full cups over a DD bust — close-set, deep cleavage line between
+  for (const s of [-1,1]) {
+    const bst = P(g, new THREE.SphereGeometry(0.105, 22, 17), skin, s*0.062, 1.175, 0.055, 0.18, 0, s*-0.08);
+    bst.scale.set(0.96, 0.92, 0.85); // the bust itself, full and round
+    const cup = P(g, new THREE.SphereGeometry(0.098, 22, 17), kini, s*0.066, 1.163, 0.072, 0.30, 0, s*-0.10);
+    cup.scale.set(0.95, 0.85, 0.78); // cup covering the lower two-thirds, skin above
+  }
+  // halter strings up to the neck
+  for (const s of [-1,1]) P(g, new THREE.CylinderGeometry(0.005, 0.005, 0.13, 6), kini, s*0.038, 1.272, 0.055, -0.5, 0, s*0.42);
+  // under-band curving across the ribs, hugging the skin
+  const bandPts = [];
+  for (let k = 0; k <= 4; k++) {
+    const th = (-0.42 + 0.84 * (k/4)) * Math.PI;
+    bandPts.push(new THREE.Vector3(Math.sin(th) * 0.112, 1.152, Math.cos(th) * 0.092));
+  }
+  P(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(bandPts), 14, 0.007, 6), kini, 0, 0, 0);
+  // soft shoulders, neck, head — anime proportions
+  for (const s of [-1,1]) P(g, new THREE.SphereGeometry(0.042, 12, 9), skin, s*0.115, 1.285, 0);
+  P(g, new THREE.CylinderGeometry(0.030, 0.036, 0.09, 12), skin, 0, 1.33, 0);
+  P(g, new THREE.SphereGeometry(0.094, 20, 15), skin, 0, 1.445, 0);
+  P(g, new THREE.SphereGeometry(0.099, 18, 13, 0, Math.PI*2, 0, Math.PI/1.8), hair, 0, 1.465, -0.005); // hair cap
+  P(g, new THREE.SphereGeometry(0.05, 12, 9), hair, 0, 1.505, 0.058).scale.set(1.5, 0.5, 0.7); // side-swept bangs
+  const hb = P(g, new THREE.SphereGeometry(0.078, 14, 11), hair, 0, 1.24, -0.09); // long soft hair down the back
+  hb.scale.set(0.85, 3.1, 0.42); hb.rotation.x = 0.06;
+  // big bright eyes
+  const irises = [0x3a7ae8, 0x3aa05a, 0x6a4a2a, 0x8a5ae8, 0xe8a03a];
+  const irisCol = (force && force.iris) || irises[i % irises.length];
+  for (const s of [-1,1]) {
+    P(g, new THREE.SphereGeometry(0.023, 12, 9), new THREE.MeshStandardMaterial({ color:0xffffff, roughness:.3 }), s*0.036, 1.458, 0.078).scale.set(1, 1.35, 0.45);
+    P(g, new THREE.SphereGeometry(0.013, 10, 8), new THREE.MeshStandardMaterial({ color:irisCol, roughness:.25 }), s*0.036, 1.455, 0.090).scale.set(1, 1.2, 0.5);
+    P(g, new THREE.SphereGeometry(0.006, 8, 6), new THREE.MeshStandardMaterial({ color:0x111111, roughness:.2 }), s*0.036, 1.455, 0.097);
+    P(g, new THREE.SphereGeometry(0.020, 10, 8), new THREE.MeshStandardMaterial({ color:0xf0a8b0, roughness:.7 }), s*0.060, 1.420, 0.062).scale.set(1, 0.5, 0.4); // blush
+  }
+  P(g, new THREE.SphereGeometry(0.014, 10, 8), new THREE.MeshStandardMaterial({ color:0xd84a68, roughness:.4 }), 0, 1.402, 0.088); // small cute mouth
   const arms = [];
-  for (const s of [-1,1]) { // arms up, ready to wave
-    const a = new THREE.Group(); a.position.set(s*0.13, 1.28, 0);
-    P(a, new THREE.CylinderGeometry(0.028, 0.024, 0.52, 6), skin, 0, 0.26, 0);
+  for (const s of [-1,1]) { // slender arms up, ready to wave
+    const a = new THREE.Group(); a.position.set(s*0.125, 1.285, 0);
+    P(a, new THREE.CylinderGeometry(0.027, 0.020, 0.50, 14), skin, 0, 0.25, 0);
+    P(a, new THREE.SphereGeometry(0.026, 10, 8), skin, 0, 0.51, 0); // hand
     g.add(a); arms.push(a);
   }
-  g.userData = { arms, phase: rnd(0, 6), side: i % 2 ? 1 : -1 };
+  g.rotation.z = (i % 2 ? 1 : -1) * 0.03; // a hint of contrapposto in the stance
+  // the "GO MIKEY!" sign for girl 3
+  if (i === 3) {
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 256, 128);
+    ctx.strokeStyle = '#d23030'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, 246, 118);
+    ctx.fillStyle = '#d23030'; ctx.font = 'bold 50px Georgia';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('GO MIKEY!', 128, 66);
+    const sign = new THREE.Group();
+    P(sign, new THREE.CylinderGeometry(0.012, 0.012, 0.38, 6), Mat(0x8a6a4a), 0, 0.12, 0);
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.28),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+    board.position.set(0, 0.45, 0);
+    sign.add(board);
+    sign.position.set(0, 0.50, 0.02);
+    arms[1].add(sign);
+  }
+  // champagne bottles for the front two
+  if (i === 0 || i === 2) {
+    const bot = new THREE.Group();
+    P(bot, new THREE.CylinderGeometry(0.030, 0.030, 0.16, 7), Mat(0x1e4a28, { roughness:.4 }), 0, 0.05, 0);
+    P(bot, new THREE.CylinderGeometry(0.012, 0.022, 0.07, 6), Mat(0x1e4a28, { roughness:.4 }), 0, 0.16, 0);
+    P(bot, new THREE.CylinderGeometry(0.014, 0.014, 0.03, 6), Mat(0xc8a030), 0, 0.20, 0); // foil
+    bot.position.set(0, 0.50, 0.02);
+    arms[0].add(bot);
+    g.userData = { arms, phase: rnd(0, 6), side: i % 2 ? 1 : -1, bottle: true };
+  } else {
+    g.userData = { arms, phase: rnd(0, 6), side: i % 2 ? 1 : -1 };
+  }
   return g;
 }
 function spawnParty() {
@@ -1499,23 +1634,114 @@ function spawnParty() {
     celebParty.add(girl);
   });
   celebParty.position.set(1.05, hunterY, 2.4);
+  if (celebParty.children[4]) celebParty.children[4].userData.twerk = true; // she leads the floor show
   scene.add(celebParty);
 }
 function fireworkBurst() {
-  const c = new THREE.Vector3(1.05 - rnd(14, 26), hunterY + rnd(7, 14), 2.4 + rnd(-12, 12));
-  const col = [0xff4a4a, 0x4ae8ff, 0xffd027, 0xff7ae8, 0x7aff7a][Math.floor(rnd(0, 5))];
-  for (let i=0;i<26;i++) {
-    const p = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4),
-      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:1 }));
-    p.position.copy(c);
-    const th = rnd(0, Math.PI*2), ph = Math.acos(rnd(-1, 1)), sp = rnd(2.5, 5);
-    p.userData.vel = new THREE.Vector3(Math.sin(ph)*Math.cos(th)*sp, Math.cos(ph)*sp, Math.sin(ph)*Math.sin(th)*sp);
-    scene.add(p); fwParts.push(p);
+  // big bursts, sometimes doubles, filling the sky
+  const bursts = Math.random() < 0.35 ? 2 : 1;
+  for (let b = 0; b < bursts; b++) {
+    const c = new THREE.Vector3(1.05 - rnd(12, 30), hunterY + rnd(7, 17), 2.4 + rnd(-16, 16));
+    const col = [0xff4a4a, 0x4ae8ff, 0xffd027, 0xff7ae8, 0x7aff7a, 0xffffff][Math.floor(rnd(0, 6))];
+    for (let i=0;i<48;i++) {
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.15, 5, 4),
+        new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:1 }));
+      p.position.copy(c);
+      const th = rnd(0, Math.PI*2), ph = Math.acos(rnd(-1, 1)), sp = rnd(3, 7.5);
+      p.userData.vel = new THREE.Vector3(Math.sin(ph)*Math.cos(th)*sp, Math.cos(ph)*sp, Math.sin(ph)*Math.sin(th)*sp);
+      scene.add(p); fwParts.push(p);
+    }
   }
   if (actx) {
-    thumpSound(0, 75, 28, 0.35, 0.35);
-    noiseBurst(0, 0.22, 1800, 0.22, 2.0);
-    for (let i=0;i<3;i++) noiseBurst(0.15 + i*0.09, 0.04, 3000, 0.10, 1.2); // crackle
+    thumpSound(0, 80, 26, 0.45, 0.55);
+    noiseBurst(0, 0.30, 2000, 0.34, 2.0);
+    for (let i=0;i<5;i++) noiseBurst(0.14 + i*0.08, 0.04, 3200, 0.14, 1.2); // crackle
+  }
+}
+// champagne shower
+let chamParts = [];
+function corkPop() {
+  if (!actx) return;
+  pluck(0, 720, 0.5, 0.10, 6);                 // pop!
+  noiseBurst(0.05, 1.6, 5200, 0.10, 1.1);     // long fizz
+}
+function sprayChampagne(girl) {
+  // a jet of golden droplets from her bottle toward the man of the hour
+  const from = new THREE.Vector3();
+  girl.userData.arms[0].children[0].getWorldPosition(from);
+  from.y += 0.15;
+  const target = new THREE.Vector3(1.05, hunterY + 1.25, 2.4);
+  const dir = target.clone().sub(from).normalize();
+  for (let i=0;i<3;i++) {
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.026, 4, 3),
+      new THREE.MeshBasicMaterial({ color: i % 2 ? 0xf6edc0 : 0xffffff, transparent:true, opacity:0.95 }));
+    p.position.copy(from);
+    p.userData.vel = dir.clone().multiplyScalar(rnd(2.6, 3.6))
+      .add(new THREE.Vector3(rnd(-0.4,0.4), rnd(0.9, 1.5), rnd(-0.4,0.4)));
+    scene.add(p); chamParts.push(p);
+  }
+}
+function kissSound() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(420, t);
+  o.frequency.exponentialRampToValueAtTime(950, t + 0.09);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.16, t + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+  o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + 0.15);
+  noiseBurst(0.07, 0.03, 2600, 0.12, 1.2); // the smack
+}
+function girlfriendUpdate(dt, t) {
+  if (!girlfriend) return;
+  const gud = girlfriend.userData;
+  const home = gud.home;
+  const goodCeleb = state === S.CELEB && celeb && !celeb.finale && SAD_CELEBS.indexOf(celeb.kind) === -1;
+  if (goodCeleb) {
+    // she comes in for the hug and a kiss
+    const k = Math.min(1, celeb.t / 0.8);
+    girlfriend.position.x = home.x + (1.50 - home.x) * k;
+    girlfriend.position.z = home.z + (2.62 - home.z) * k;
+    girlfriend.position.y = hunterY;
+    girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * k; // turns to face him
+    girlfriend.rotation.z = 0.30 * k + (celeb.t > 1.4 ? Math.abs(Math.sin(celeb.t*3)) * 0.06 : 0); // leans in, little pecks
+    gud.arms[0].rotation.x = 0.95 * k; // arms wrapped around him
+    gud.arms[1].rotation.x = 0.95 * k;
+    gud.arms[0].rotation.z = 0.35 * k;
+    gud.arms[1].rotation.z = -0.35 * k;
+    if (celeb.t > 1.5 && !celeb.kissed) { celeb.kissed = true; kissSound(); setTimeout(kissSound, 700); }
+  } else if (state === S.CELEB && celeb && celeb.finale) {
+    // finale: handled in celebUpdate — she's headed for his lap
+  } else {
+    // back to her spot beside him, cheering him on (standing quietly if he missed)
+    const sad = state === S.CELEB && celeb && SAD_CELEBS.indexOf(celeb.kind) !== -1;
+    girlfriend.position.x += (home.x - girlfriend.position.x) * Math.min(1, dt*3);
+    girlfriend.position.z += (home.z - girlfriend.position.z) * Math.min(1, dt*3);
+    girlfriend.rotation.z *= Math.max(0, 1 - 4*dt);
+    girlfriend.rotation.x *= Math.max(0, 1 - 4*dt);
+    girlfriend.rotation.y += (home.rotY - girlfriend.rotation.y) * Math.min(1, dt*3);
+    girlfriend.position.y = hunterY + (sad ? 0 : Math.abs(Math.sin(t*3.2)) * 0.05);
+    gud.arms[0].rotation.x *= Math.max(0, 1 - 4*dt);
+    gud.arms[1].rotation.x *= Math.max(0, 1 - 4*dt);
+    gud.arms[0].rotation.z = sad ? 0 : 0.2 + Math.sin(t*2.5) * 0.25;
+    gud.arms[1].rotation.z = sad ? 0 : -0.2 + Math.sin(t*2.5 + 2) * 0.25;
+  }
+}
+function giggleSound() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  for (let i=0;i<4;i++) {
+    const o = actx.createOscillator(); o.type = 'sine';
+    const f = 950 - i*85 + rnd(-30, 30);
+    o.frequency.setValueAtTime(f, t + i*0.11);
+    o.frequency.exponentialRampToValueAtTime(f*0.8, t + i*0.11 + 0.08);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t + i*0.11);
+    g.gain.linearRampToValueAtTime(0.12, t + i*0.11 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + i*0.11 + 0.10);
+    o.connect(g); g.connect(actx.destination); o.start(t + i*0.11); o.stop(t + i*0.11 + 0.12);
   }
 }
 
@@ -1571,17 +1797,53 @@ function celebUpdate(dt) {
         spawnSmoke(exhale ? 3 : 1, exhale);
         celeb.smokeT = exhale ? 0.10 : 0.30;
       }
-      // fireworks overhead
+      // fireworks overhead — a real show
       celeb.fwT -= dt;
-      if (celeb.fwT <= 0) { fireworkBurst(); celeb.fwT = rnd(0.45, 0.95); }
-      // the girls dance
+      if (celeb.fwT <= 0) { fireworkBurst(); celeb.fwT = rnd(0.25, 0.55); }
+      // champagne shower once the joint is lit
+      if (ct > 1.4 && !celeb.cork) { celeb.cork = true; corkPop(); }
+      if (celebParty && ct > 1.5 && ct < 5.2) {
+        celebParty.children.forEach(girl => { if (girl.userData.bottle) sprayChampagne(girl); });
+      }
+      // the girls dance — slow, hip-led, with one putting on her own show
       if (celebParty) celebParty.children.forEach(girl => {
         const ud = girl.userData;
-        girl.position.y = Math.abs(Math.sin(ct*4 + ud.phase)) * 0.16;
-        girl.rotation.z = Math.sin(ct*4 + ud.phase) * 0.07 * ud.side;
-        ud.arms[0].rotation.z =  0.25 + Math.sin(ct*5 + ud.phase) * 0.4;
-        ud.arms[1].rotation.z = -0.25 + Math.sin(ct*5 + ud.phase + 1.5) * 0.4;
+        if (ud.twerk) {
+          girl.rotation.y = -Math.PI/2;                                  // turned away
+          girl.rotation.x = 0.5;                                          // bent forward, hands low
+          girl.position.y = Math.abs(Math.sin(ct*9 + ud.phase)) * 0.07;   // rapid low bounce
+          girl.rotation.z = Math.sin(ct*9 + ud.phase) * 0.09;
+          ud.arms[0].rotation.z = 0.9; ud.arms[1].rotation.z = 0.9;
+          return;
+        }
+        girl.rotation.x = Math.sin(ct*2.2 + ud.phase) * 0.10;             // slow body roll
+        girl.position.y = Math.abs(Math.sin(ct*3 + ud.phase)) * 0.12;
+        girl.rotation.z = Math.sin(ct*3 + ud.phase) * 0.15 * ud.side;     // deep hip sway
+        girl.rotation.y += Math.sin(ct*1.6 + ud.phase) * 0.012;
+        ud.arms[0].rotation.z =  0.25 + Math.sin(ct*3.5 + ud.phase) * 0.45;
+        ud.arms[1].rotation.z = -0.25 + Math.sin(ct*3.5 + ud.phase + 1.5) * 0.45;
       });
+      // season finale: his girl hops onto his lap, wiggles in, and giggles
+      if (celeb.finale && girlfriend && ct > 2.0) {
+        const k2 = Math.min(1, (ct - 2.0) / 0.9);
+        if (!celeb.gStart) celeb.gStart = { x: girlfriend.position.x, z: girlfriend.position.z };
+        const lapX = 1.38, lapY = hunterY + 0.60, lapZ = 2.55;
+        girlfriend.position.x = celeb.gStart.x + (lapX - celeb.gStart.x) * k2;
+        girlfriend.position.z = celeb.gStart.z + (lapZ - celeb.gStart.z) * k2;
+        girlfriend.position.y = k2 < 1
+          ? hunterY + Math.sin(k2 * Math.PI) * 0.8 + 0.60 * k2        // the hop
+          : lapY + Math.abs(Math.sin(ct*6)) * 0.045;                  // settling in
+        girlfriend.rotation.y = -Math.PI/2 + Math.sin(ct*3) * 0.12;   // face to face, wiggling
+        girlfriend.rotation.x = -0.3 * k2;                            // leaning back into him
+        girlfriend.rotation.z = Math.sin(ct*6) * 0.06;
+        if (k2 >= 1 && !celeb.giggled) {
+          celeb.giggled = true;
+          giggleSound(); kissSound();
+          setTimeout(giggleSound, 900);
+          setTimeout(() => { kissSound(); giggleSound(); }, 2000);
+        }
+        if (k2 >= 1 && hunterRefs) hunterRefs.headGrp.rotation.y = Math.min(0.5, hunterRefs.headGrp.rotation.y + dt*0.8); // his attention is all hers
+      }
       break;
     }
     case 'rifleraise': { // rifle hoisted high in both hands
@@ -1702,6 +1964,11 @@ function endCeleb() {
   H.rifle.rotation.copy(H.rifle0.rot);
   H.joint.visible = H.jointTip.visible = false;
   if (celebParty) { scene.remove(celebParty); celebParty = null; }
+  if (girlfriend) { // back to her spot at his side
+    const home = girlfriend.userData.home;
+    girlfriend.position.set(home.x, hunterY, home.z);
+    girlfriend.rotation.set(0, home.rotY, 0);
+  }
   const wasFinale = celeb && celeb.finale;
   celeb = null;
   cineEl.style.opacity = 0;
@@ -1797,22 +2064,20 @@ function showGameOver() {
   resultPanel.classList.remove('hidden');
 }
 
-// ---------- Input (single touch / mouse) ----------
-let pressing = false, pressStartY = 0, fired = false;
-const FIRE_PUSH_PX = 55;
+// ---------- Input (single touch / mouse): hold to aim, release to fire ----------
+let pressing = false, pressStartY = 0, fired = false, scopeEnterT = 0;
 
 function pressStart(y) {
   initAudio();
   startAmbient();
   if (state === S.START) {
     startScreen.classList.add('hidden');
-    loadLevel(0); // flyby rolls automatically
+    startSeasonOpener();
     return;
   }
   if (state === S.FLYBY) return;       // the flyby always plays out
-  if (state === S.INTRO) {             // tap skips the intro
-    state = S.IDLE;
-    hintEl.style.opacity = 1;
+  if (state === S.INTRO) {             // tap skips ahead to the flyby
+    endIntro();
     return;
   }
   if (state === S.CELEB) {             // tap skips the celebration
@@ -1828,7 +2093,7 @@ function pressStart(y) {
   if (state === S.OVER) {
     totalScore = 0;
     resultPanel.classList.add('hidden');
-    loadLevel(0); // new season, new flyby
+    startSeasonOpener(); // new season, same send-off
     return;
   }
   if (state === S.IDLE) {
@@ -1838,6 +2103,7 @@ function pressStart(y) {
     scopedTime = rnd(0, 10);
     aimPhase = rnd(0, 100);
     pressing = true; pressStartY = y; fired = false;
+    scopeEnterT = performance.now();
     scopeEl.style.opacity = 1;
     hintEl.style.opacity = 0;
     // weapon-appropriate aim view: scope only on the rifle
@@ -1849,15 +2115,20 @@ function pressStart(y) {
   }
 }
 function pressMove(y) {
-  if (!pressing || state !== S.SCOPED || fired) return;
-  if (pressStartY - y > FIRE_PUSH_PX) { fired = true; pressing = false; fire(); }
+  // movement no longer fires — the trigger is lifting your finger
 }
 function pressEnd() {
   pressing = false;
   if (state === S.SCOPED && !fired) {
-    state = S.IDLE;
-    scopeEl.style.opacity = 0;
-    hintEl.style.opacity = 1;
+    if (performance.now() - scopeEnterT < 350) {
+      // a quick tap just lowers the weapon — no accidental shots
+      state = S.IDLE;
+      scopeEl.style.opacity = 0;
+      hintEl.style.opacity = 1;
+    } else {
+      fired = true;
+      fire();
+    }
   }
 }
 
@@ -2188,11 +2459,18 @@ function tick() {
     p.material.opacity -= dt*0.5;
     if (p.material.opacity <= 0) { scene.remove(p); fwParts.splice(i,1); }
   }
+  for (let i = chamParts.length-1; i >= 0; i--) {
+    const p = chamParts[i];
+    p.position.addScaledVector(p.userData.vel, dt);
+    p.userData.vel.y -= 3.2*dt;
+    p.material.opacity -= dt*0.8;
+    if (p.material.opacity <= 0 || p.position.y < 0) { scene.remove(p); chamParts.splice(i,1); }
+  }
 
   if (animalGroup) {
     // bullet in flight = slow-mo: the world holds still until impact
     const frozen = state === S.BULLET && !B.impactDone;
-    if (!frozen) animateAnimal(dt, t);
+    if (!frozen) { animateAnimal(dt, t); girlfriendUpdate(dt, t); }
     animals.forEach(a => { const b = a.userData.blob; if (b) b.position.set(a.position.x, 0.02, a.position.z); });
   }
 
@@ -2204,8 +2482,9 @@ function tick() {
   }
   else if (state === S.INTRO) {
     introT += dt;
+    cheerParty(introT);
     introCamera();
-    if (introT >= INTRO_DUR) { state = S.IDLE; hintEl.style.opacity = 1; }
+    if (introT >= INTRO_DUR) endIntro();
   }
   else if (state === S.SCOPED) scopedCamera();
   else if (state === S.BULLET && B.active) bulletCamera(dt);
