@@ -100,7 +100,7 @@
   <div class="tap">Tap to start hunting</div>
 </div>
 
-<div id="verBadge">v1.14</div>
+<div id="verBadge">v1.17</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -437,12 +437,16 @@ function buildHunter() {
   rifleGroup.rotation.y = -0.10;
   g.add(rifleGroup);
   // arms (shoulder-pivoted groups so they can celebrate)
+  const handG = new THREE.SphereGeometry(0.045, 7, 6);
   const armNear = new THREE.Group(); armNear.position.set(0.06, 1.08, 0.13); g.add(armNear);
   P(armNear, new THREE.CylinderGeometry(0.045,0.04,0.34,7), camoA, 0.04, -0.11, 0, 0.9, 0, -0.5);
-  P(armNear, new THREE.SphereGeometry(0.045, 7, 6), skin, 0.10, -0.24, 0.02); // hand
+  // hands sit exactly at the arm-cylinder ends (computed, so they always follow)
+  const dirN = new THREE.Vector3(0,1,0).applyEuler(new THREE.Euler(0.9, 0, -0.5));
+  P(armNear, handG, skin, 0.04 - dirN.x*0.17, -0.11 - dirN.y*0.17, -dirN.z*0.17);
   const armFar = new THREE.Group(); armFar.position.set(0.06, 1.08, -0.14); g.add(armFar);
   P(armFar, new THREE.CylinderGeometry(0.045,0.04,0.30,7), camoA, 0.07, -0.08, 0, -1.2, 0, -0.3);
-  P(armFar, new THREE.SphereGeometry(0.045, 7, 6), skin, 0.13, -0.16, -0.02);
+  const dirF = new THREE.Vector3(0,1,0).applyEuler(new THREE.Euler(-1.2, 0, -0.3));
+  P(armFar, handG, skin, 0.07 + dirF.x*0.15, -0.08 + dirF.y*0.15, dirF.z*0.15);
 
   hunterRefs = { armNear, armFar, headGrp, joint, jointTip, rifle: rifleGroup,
     rifle0: { pos: rifleGroup.position.clone(), rot: rifleGroup.rotation.clone() } };
@@ -1082,12 +1086,17 @@ function renderVitalsDiagram(offX, offY, vitalR, mirror, type) {
 }
 
 // ---------- Celebrations ----------
+const KILL_CELEBS = ['fistpump', 'rifleraise', 'doublefist', 'wave', 'clap', 'hattip', 'spin360', 'wheelie'];
+const SAD_CELEBS = ['facepalm', 'shrug', 'headhang', 'armslam'];
 function startCeleb() {
   B.active = false;
   state = S.CELEB;
   const pts = B.result.pts;
-  const kind = pts >= 100 ? 'joint' : pts >= 85 ? 'rifleraise' : pts >= 50 ? 'fistpump' : pts >= 20 ? 'shrug' : 'facepalm';
-  const dur = { joint:4.4, rifleraise:3.0, fistpump:2.8, shrug:2.4, facepalm:2.6 }[kind];
+  let kind;
+  if (pts >= 100)     kind = 'joint';   // reserved for perfection
+  else if (pts >= 50) kind = KILL_CELEBS[Math.floor(Math.random()*KILL_CELEBS.length)];
+  else                kind = SAD_CELEBS[Math.floor(Math.random()*SAD_CELEBS.length)]; // it got away
+  const dur = { joint:4.4, rifleraise:3.0, fistpump:2.8, doublefist:3.0, wave:3.0, clap:2.8, hattip:2.6, spin360:3.4, wheelie:3.6, shrug:2.4, facepalm:2.6, headhang:2.8, armslam:2.8 }[kind];
   celeb = { kind, t:0, dur, smokeT:0 };
   celebSound(kind);
 }
@@ -1103,13 +1112,22 @@ function spawnSmoke(n, big) {
     scene.add(p); smokeParts.push(p);
   }
 }
+const RIFLE_REST = { pos: new THREE.Vector3(0.16, 0.93, -0.05), rotY: -1.25 };
 function celebUpdate(dt) {
   celeb.t += dt;
   const ct = celeb.t, H = hunterRefs;
+  const k = Math.min(1, ct/0.5); // shared ease-in
+  // lay the rifle across his lap whenever a hand leaves it
+  const restRifle = () => {
+    H.rifle.position.lerpVectors(H.rifle0.pos, RIFLE_REST.pos, k);
+    H.rifle.rotation.y = H.rifle0.rot.y + (RIFLE_REST.rotY - H.rifle0.rot.y) * k;
+    H.rifle.rotation.x = 0; H.rifle.rotation.z = 0;
+  };
+  const relaxFarArm = () => { H.armFar.rotation.z = k * 0.25; H.armFar.rotation.x = 0; };
   switch (celeb.kind) {
-    case 'joint': { // perfect heart shot: kick back and spark up
-      const raise = Math.min(1, ct/0.7);
-      H.armNear.rotation.z = raise * 1.9;
+    case 'joint': { // perfect heart shot only: kick back and spark up
+      restRifle(); relaxFarArm();
+      H.armNear.rotation.z = k * 1.9;
       H.joint.visible = H.jointTip.visible = true;
       H.jointTip.material.color.setHex(Math.sin(ct*7) > 0 ? 0xff8030 : 0xb83a10); // ember flicker
       H.headGrp.rotation.z = ct > 2.0 ? Math.min(0.30, (ct-2.0)*0.5) : 0; // tips head back to exhale
@@ -1121,34 +1139,101 @@ function celebUpdate(dt) {
       }
       break;
     }
-    case 'rifleraise': { // lung shot: rifle held high in both hands
-      const k = Math.min(1, ct/0.6);
+    case 'rifleraise': { // rifle hoisted high in both hands
       const pump = Math.abs(Math.sin(ct*4.5)) * 0.15;
       H.armNear.rotation.z = k * (2.4 + pump);
       H.armFar.rotation.z = k * (2.4 + pump);
-      H.rifle.position.y = H.rifle0.pos.y + k * (0.45 + pump);
+      H.rifle.position.y = H.rifle0.pos.y + k * (0.42 + pump);
+      H.rifle.position.z = H.rifle0.pos.z + k * 0.25; // pulls it in overhead
       H.rifle.rotation.z = k * 0.35;
       H.headGrp.rotation.z = k * 0.22;
       break;
     }
-    case 'fistpump': { // solid hit: pumping that fist
-      const k = Math.min(1, ct/0.4);
+    case 'fistpump': {
+      restRifle(); relaxFarArm();
       H.armNear.rotation.z = k * (2.0 + Math.abs(Math.sin(ct*6)) * 0.55);
       H.headGrp.rotation.z = Math.abs(Math.sin(ct*6)) * 0.10;
       break;
     }
-    case 'shrug': { // graze: palms out, "well, that happened"
-      const k = Math.min(1, ct/0.5);
-      H.armNear.rotation.x = -k * 0.9; H.armFar.rotation.x = k * 0.9;
-      H.armNear.rotation.z = k * 0.5;  H.armFar.rotation.z = k * 0.5;
-      H.headGrp.rotation.y = Math.sin(ct*3) * 0.14; // looking around sheepishly
+    case 'doublefist': { // both fists hammering the sky
+      restRifle();
+      H.armNear.rotation.z = k * 2.0 + Math.max(0, Math.sin(ct*7)) * 0.5 * k;
+      H.armFar.rotation.z  = k * 2.0 + Math.max(0, -Math.sin(ct*7)) * 0.5 * k;
+      H.headGrp.rotation.z = Math.abs(Math.sin(ct*7)) * 0.08;
       break;
     }
-    case 'facepalm': { // clean miss
-      const k = Math.min(1, ct/0.6);
+    case 'wave': { // arms up high, swaying side to side
+      restRifle();
+      H.armNear.rotation.z = k * 2.5;
+      H.armFar.rotation.z = k * 2.5;
+      H.armNear.rotation.x = Math.sin(ct*3) * 0.45 * k;
+      H.armFar.rotation.x = Math.sin(ct*3) * 0.45 * k;
+      H.headGrp.rotation.y = Math.sin(ct*3) * 0.12;
+      break;
+    }
+    case 'clap': { // applauding his own shot
+      restRifle();
+      const cl = Math.max(0, Math.sin(ct*8)) * k;
+      H.armNear.rotation.z = k * 1.5; H.armFar.rotation.z = k * 1.5;
+      H.armNear.rotation.x = (0.35 + cl * 0.5);   // near hand swings in (-z)
+      H.armFar.rotation.x = -(0.35 + cl * 0.5);   // far hand swings in (+z)
+      H.headGrp.rotation.z = k * 0.12;
+      break;
+    }
+    case 'hattip': { // tips his cap to the crowd
+      restRifle(); relaxFarArm();
+      H.armNear.rotation.z = k * 2.3;
+      H.headGrp.rotation.z = -k * 0.18 + Math.sin(ct*2) * 0.06; // modest nod
+      break;
+    }
+    case 'spin360': { // rips a full spin in the chair, one fist high
+      restRifle();
+      // wind up briefly, then two fast revolutions, stick the landing
+      const spinK = Math.min(1, Math.max(0, (ct - 0.4) / 2.0));
+      const e = spinK*spinK*(3-2*spinK);
+      hunterGroup.rotation.y = 0.14 + e * Math.PI * 4;
+      H.armNear.rotation.z = k * 2.3;                      // fist up the whole way round
+      H.armFar.rotation.z = k * 0.9; H.armFar.rotation.x = k * 0.5; // hand out on the rim
+      H.headGrp.rotation.z = k * 0.15;
+      break;
+    }
+    case 'wheelie': { // pops it up on the back wheels and rocks
+      restRifle();
+      const tilt = k * 0.42 + Math.sin(ct*2.6) * 0.13 * k; // balance point wobble
+      hunterGroup.rotation.z = Math.max(0, tilt);
+      H.armNear.rotation.z = k * 1.1; H.armNear.rotation.x = k * 0.45; // arm out for balance
+      H.armFar.rotation.z = k * 0.5; H.armFar.rotation.x = -k * 0.3;
+      H.headGrp.rotation.z = k * 0.18;
+      break;
+    }
+    case 'shrug': { // graze: palms out, "well, that happened"
+      restRifle();
+      H.armNear.rotation.x = -k * 0.9; H.armFar.rotation.x = k * 0.9;
+      H.armNear.rotation.z = k * 0.5;  H.armFar.rotation.z = k * 0.5;
+      H.headGrp.rotation.y = Math.sin(ct*3) * 0.14;
+      break;
+    }
+    case 'facepalm': { // hand over the aviators
+      restRifle(); relaxFarArm();
       H.armNear.rotation.z = k * 2.1;
-      H.headGrp.rotation.z = -k * 0.35;                 // head hangs
-      H.headGrp.rotation.y = Math.sin(ct*2.5) * 0.15;   // slow shake
+      H.headGrp.rotation.z = -k * 0.35;
+      H.headGrp.rotation.y = Math.sin(ct*2.5) * 0.15;
+      break;
+    }
+    case 'headhang': { // shoulders slump, head drops, slow defeated shake
+      restRifle();
+      H.armNear.rotation.z = -k * 0.15; H.armFar.rotation.z = -k * 0.15; // arms hang limp
+      H.headGrp.rotation.z = -k * 0.45 - Math.max(0, Math.sin(ct*1.2)) * 0.06;
+      H.headGrp.rotation.y = Math.sin(ct*1.8) * 0.18;
+      break;
+    }
+    case 'armslam': { // pounds the armrest in frustration
+      restRifle(); relaxFarArm();
+      const slam = Math.abs(Math.sin(ct*5));
+      H.armNear.rotation.z = k * (0.5 + slam * 0.85);
+      H.armNear.rotation.x = k * 0.2;
+      H.headGrp.rotation.z = -k * 0.2;
+      H.headGrp.rotation.y = Math.sin(ct*5) * 0.08;
       break;
     }
   }
@@ -1159,6 +1244,7 @@ function endCeleb() {
   H.armNear.rotation.set(0,0,0);
   H.armFar.rotation.set(0,0,0);
   H.headGrp.rotation.set(0,0,0);
+  hunterGroup.rotation.set(0, 0.14, 0); // chair back on all four wheels, facing downrange
   H.rifle.position.copy(H.rifle0.pos);
   H.rifle.rotation.copy(H.rifle0.rot);
   H.joint.visible = H.jointTip.visible = false;
@@ -1195,7 +1281,7 @@ function celebSound(kind) {
     breath(0.0, 0.05, 0.20, true);   // lighter flick
     breath(0.9, 1.1, 0.10, true);    // long draw in
     breath(2.3, 1.6, 0.14, false);   // satisfied exhale
-  } else if (kind === 'rifleraise' || kind === 'fistpump') {
+  } else if (KILL_CELEBS.indexOf(kind) !== -1) {
     note(392, 523, 0, 0.18, 0.20); note(523, 659, 0.2, 0.25, 0.22); // whoop
   } else if (kind === 'shrug') {
     note(330, 300, 0, 0.35, 0.15);
