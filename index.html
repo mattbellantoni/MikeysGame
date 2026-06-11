@@ -61,9 +61,6 @@
   #vitalsWrap svg { width:min(76vw, 380px); height:auto; filter:drop-shadow(0 4px 12px rgba(0,0,0,.55)); }
   #verBadge { position:fixed; bottom:10px; left:14px; z-index:50; color:#fff; font-size:13px;
     opacity:.6; letter-spacing:1px; text-shadow:0 1px 4px #000; pointer-events:none; }
-  .wbtn { margin:10px 0; font-size:22px; padding:18px 40px; min-width:320px; border:2px solid rgba(255,255,255,.85);
-    border-radius:50px; background:rgba(40,70,40,.7); cursor:pointer; }
-  .wbtn small { display:block; font-size:14px; opacity:.8; margin-top:3px; }
   /* weapon-specific aim views */
   .aimview { position:absolute; inset:0; display:none; }
   .vig { position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(0,0,0,.5) 100%); }
@@ -75,11 +72,22 @@
   #aimBow .pin.p1 { top:calc(50% - 5vmin); } #aimBow .pin.p1::after { background:#39e639; box-shadow:0 0 7px #39e639; }
   #aimBow .pin.p2 { top:50%; }              #aimBow .pin.p2::after { background:#ffd027; box-shadow:0 0 9px #ffd027; }
   #aimBow .pin.p3 { top:calc(50% + 5vmin); } #aimBow .pin.p3::after { background:#ff5030; box-shadow:0 0 7px #ff5030; }
-  #aimShot .brl { position:absolute; bottom:-30vmin; width:46vmin; height:46vmin; border-radius:50%; background:rgba(14,14,14,.93); }
-  #aimShot .brl.l { left:calc(50% - 44vmin); }
-  #aimShot .brl.r { left:calc(50% - 2vmin); }
-  #aimShot .bead { position:absolute; left:50%; top:50%; width:2.2vmin; height:2.2vmin; transform:translate(-50%,-50%);
-    border-radius:50%; background:#f4c84a; box-shadow:0 0 9px rgba(244,200,74,.95), inset 0 -2px 3px rgba(120,80,10,.6); }
+  /* shotgun: looking straight down the barrels, bead on the rib is the only aim mark */
+  #aimShot .barrels { position:absolute; left:50%; top:calc(50% + 1.6vmin); bottom:-3vmin; width:80vmin;
+    transform:translateX(-50%); border-radius:40vmin 40vmin 0 0;
+    background:linear-gradient(180deg, rgba(34,36,38,.94), rgba(8,8,8,.97) 60%); }
+  #aimShot .rib { position:absolute; left:50%; top:calc(50% + 1.6vmin); bottom:0; width:1.1vmin;
+    transform:translateX(-50%); background:linear-gradient(180deg, rgba(90,94,98,.85), rgba(30,32,34,.9) 70%); }
+  #aimShot .bead { position:absolute; left:50%; top:50%; width:1.6vmin; height:1.6vmin; transform:translate(-50%,-50%);
+    border-radius:50%; background:radial-gradient(circle at 35% 30%, #f2f4f6, #9aa0a6 65%, #5a6066);
+    box-shadow:0 0 5px rgba(255,255,255,.55); }
+  /* persistent weapon selector, left edge */
+  #wsel { position:fixed; left:10px; top:50%; transform:translateY(-50%); z-index:40;
+    display:flex; flex-direction:column; gap:12px; }
+  .wopt { width:62px; height:62px; border-radius:50%; background:rgba(15,25,15,.72); border:2px solid rgba(255,255,255,.45);
+    color:#fff; font-size:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .wopt.active { border-color:#ffd76a; background:rgba(60,90,40,.88); box-shadow:0 0 12px rgba(255,215,106,.55); }
+  .panel { z-index:45; }
 </style>
 </head>
 <body>
@@ -104,7 +112,8 @@
   </div>
   <div class="aimview" id="aimShot">
     <div class="vig"></div>
-    <div class="brl l"></div><div class="brl r"></div>
+    <div class="barrels"></div>
+    <div class="rib"></div>
     <div class="bead"></div>
   </div>
   <div id="fireHint">SLIDE FORWARD TO FIRE &#9650;</div>
@@ -129,17 +138,16 @@
   <p style="font-size:22px">Welcome to Mike's Big Hunt.</p>
   <p>Tap and hold the screen to take aim at your game. <b>Swipe up</b> when the crosshair is in the perfect spot. Enjoy the hunt!</p>
   <div class="tap">Tap to start hunting</div>
+  <div style="position:absolute;bottom:12px;left:0;right:0;font-size:11px;opacity:.5">Gunshot audio: &ldquo;Sniper Rifle&rdquo; Kibblesbob (Public Domain) &amp; &ldquo;Shotgun Blast&rdquo; Jim Rogers (CC BY 3.0) via SoundBible.com</div>
 </div>
 
-<div class="panel hidden" id="weaponScreen">
-  <h2>Choose your weapon</h2>
-  <p id="wsub" style="margin-bottom:10px"></p>
-  <div class="wbtn" data-w="rifle">&#127919; Rifle<small>Flat-shooting and true at any range</small></div>
-  <div class="wbtn" data-w="bow">&#127993; Bow<small>Silent, but the arrow arcs in flight</small></div>
-  <div class="wbtn" data-w="shotgun">&#128165; Shotgun<small>Devastating up close, spreads wide at range</small></div>
+<div id="wsel">
+  <div class="wopt active" data-w="rifle" title="Rifle">&#127919;</div>
+  <div class="wopt" data-w="bow" title="Bow">&#127993;</div>
+  <div class="wopt" data-w="shotgun" title="Shotgun">&#128165;</div>
 </div>
 
-<div id="verBadge">v1.20</div>
+<div id="verBadge">v1.22</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -693,9 +701,33 @@ function buildWorld(level) {
 
 // ---------- Audio ----------
 let actx = null;
+// real recorded gunshots, streamed like the Three.js CDN (synth fallback if unreachable)
+// rifle: ".50 cal Sniper Rifle" by Kibblesbob (Public Domain, SoundBible)
+// shotgun: "Shotgun Blast" by Jim Rogers (CC BY 3.0, SoundBible)
+const SFX_URLS = {
+  rifle:   'https://soundbible.com/grab.php?id=1788&type=mp3',
+  shotgun: 'https://soundbible.com/grab.php?id=1919&type=mp3'
+};
+const sfx = {}, sfxReady = {};
+function loadSfx() {
+  Object.keys(SFX_URLS).forEach(k => {
+    if (sfx[k]) return;
+    const a = new Audio();
+    a.preload = 'auto';
+    a.src = SFX_URLS[k];
+    a.addEventListener('canplaythrough', () => { sfxReady[k] = true; }, { once:true });
+    a.load();
+    // prime within the user gesture so tablets allow instant playback later
+    a.muted = true;
+    a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; })
+      .catch(() => { a.muted = false; });
+    sfx[k] = a;
+  });
+}
 function initAudio() {
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
   if (actx && actx.state === 'suspended') actx.resume();
+  loadSfx();
 }
 function noiseBurst(st, dur, lpFreq, vol, decayPow) {
   const t = actx.currentTime + st;
@@ -735,6 +767,17 @@ function echoTaps(vol) {
 }
 function gunshot() {
   if (!actx) return;
+  // real recordings for the firearms when loaded; recordings carry their own natural echo
+  if (weapon !== 'bow' && sfx[weapon] && sfxReady[weapon]) {
+    const a = sfx[weapon];
+    try { a.currentTime = 0; a.volume = 1; a.play().catch(() => {}); } catch (e) {}
+    thumpSound(0, weapon === 'shotgun' ? 70 : 110, weapon === 'shotgun' ? 22 : 35, 0.4, 0.5); // felt punch
+    if (weapon === 'shotgun') {
+      noiseBurst(1.05, 0.05, 2400, 0.30, 1.2);  // shk-
+      noiseBurst(1.22, 0.05, 2400, 0.30, 1.2);  // -shk
+    }
+    return;
+  }
   if (weapon === 'bow') {
     // taut string release: deep resonant twang + harmonic + limb slap. Nearly silent in the woods.
     pluck(0, 170, 0.9, 0.45, 14);
@@ -1542,10 +1585,11 @@ const FIRE_PUSH_PX = 55;
 function pressStart(y) {
   initAudio();
   startAmbient();
-  if (state === S.WEAPON) return;      // weapon buttons handle their own taps
   if (state === S.START) {
     startScreen.classList.add('hidden');
-    showWeaponScreen(0);
+    loadLevel(0);
+    state = S.INTRO; introT = 0;       // meet the hunter: 360 sweep
+    hintEl.style.opacity = 0;
     return;
   }
   if (state === S.INTRO) {             // tap skips the intro
@@ -1559,14 +1603,16 @@ function pressStart(y) {
   }
   if (state === S.RESULT) {
     resultPanel.classList.add('hidden');
-    if (levelIdx < LEVELS.length - 1) showWeaponScreen(levelIdx + 1); // re-arm between hunts
+    if (levelIdx < LEVELS.length - 1) loadLevel(levelIdx + 1);
     else showGameOver();
     return;
   }
   if (state === S.OVER) {
     totalScore = 0;
     resultPanel.classList.add('hidden');
-    showWeaponScreen(0); // pick a weapon for the new season
+    loadLevel(0);
+    state = S.INTRO; introT = 0;
+    hintEl.style.opacity = 0;
     return;
   }
   if (state === S.IDLE) {
@@ -1600,31 +1646,21 @@ window.addEventListener('touchstart', e => { e.preventDefault(); pressStart(e.to
 window.addEventListener('touchmove',  e => { e.preventDefault(); if (e.touches.length) pressMove(e.touches[0].clientY); }, { passive:false });
 window.addEventListener('touchend',   e => { e.preventDefault(); pressEnd(); }, { passive:false });
 window.addEventListener('touchcancel',e => { e.preventDefault(); pressEnd(); }, { passive:false });
-// weapon selection (shown before every hunt — single tap)
+// weapon selection: always-available side buttons — switch any time you're not mid-shot
 function equipWeapon() {
   if (!hunterRefs) return;
   Object.keys(hunterRefs.weapons).forEach(k => { hunterRefs.weapons[k].visible = (k === weapon); });
 }
-function showWeaponScreen(idx) {
-  pendingLevel = idx;
-  const L = LEVELS[idx];
-  $('wsub').textContent = 'Hunt ' + (idx+1) + ' of ' + LEVELS.length + ': ' + L.name + ' at ' + L.dist + ' yds' + (L.stand ? ' — from the tree stand' : '');
-  $('weaponScreen').classList.remove('hidden');
-  state = S.WEAPON;
-}
-document.querySelectorAll('.wbtn').forEach(b => {
+const wselEl = $('wsel');
+document.querySelectorAll('.wopt').forEach(b => {
   const pick = e => {
     e.stopPropagation(); e.preventDefault();
-    if (state !== S.WEAPON) return;
+    if (state === S.SCOPED || state === S.BULLET || state === S.CELEB) return; // not mid-shot
     initAudio(); startAmbient();
     weapon = b.dataset.w;
     equipWeapon();
-    $('weaponScreen').classList.add('hidden');
-    loadLevel(pendingLevel);
-    if (pendingLevel === 0) { // meet the hunter: 360 sweep on the season opener
-      state = S.INTRO; introT = 0;
-      hintEl.style.opacity = 0;
-    }
+    document.querySelectorAll('.wopt').forEach(x => x.classList.toggle('active', x.dataset.w === weapon));
+    setHUD();
   };
   b.addEventListener('touchstart', pick, { passive:false });
   b.addEventListener('mousedown', pick);
@@ -1837,10 +1873,19 @@ function animateAnimal(dt, t) {
 }
 
 // ---------- Main loop ----------
+let wselShown = true;
 function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
+
+  // weapon selector only while lining up the next shot
+  const showWsel = state === S.IDLE;
+  if (showWsel !== wselShown) {
+    wselShown = showWsel;
+    wselEl.style.opacity = showWsel ? 1 : 0;
+    wselEl.style.pointerEvents = showWsel ? 'auto' : 'none';
+  }
 
   if (state === S.SCOPED) {
     scopedTime += dt;
