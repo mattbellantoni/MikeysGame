@@ -147,7 +147,7 @@
   <div class="wopt" data-w="shotgun" title="Shotgun">&#128165;</div>
 </div>
 
-<div id="verBadge">v1.22</div>
+<div id="verBadge">v1.23</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -416,9 +416,36 @@ function makeAnimal(type) {
 let muzzleWorld = new THREE.Vector3();
 let hunterGroup, rifleGroup, hunterRefs = null;
 
+// proper woodland camo, painted onto a texture
+function makeCamoTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#5a6b3c';
+  ctx.fillRect(0, 0, 256, 256);
+  const cols = ['#3a4626', '#6e6244', '#2c361e', '#7c8a5a', '#4a3c28'];
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = cols[i % cols.length];
+    const x = Math.random()*256, y = Math.random()*256;
+    // each blotch = a cluster of overlapping ellipses for that organic camo edge
+    for (let j = 0; j < 4; j++) {
+      ctx.beginPath();
+      ctx.ellipse(x + (Math.random()-0.5)*26, y + (Math.random()-0.5)*26,
+        8 + Math.random()*16, 5 + Math.random()*10, Math.random()*Math.PI, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 function buildHunter() {
   const g = new THREE.Group();
-  const camoA = Mat(0x5a6b3c), camoB = Mat(0x44532e), camoC = Mat(0x6e6244);
+  const camoTex = makeCamoTexture();
+  const camoA = new THREE.MeshStandardMaterial({ map:camoTex, roughness:.92, flatShading:true });
+  const camoB = new THREE.MeshStandardMaterial({ map:camoTex, color:0xb8b8b8, roughness:.92, flatShading:true }); // darker tint
+  const camoC = camoA;
   const skin = Mat(0xc9a07a);
   const dark = Mat(0x1c1c1c, { roughness:.5 });
   const metal = Mat(0x6a6f74, { roughness:.35, metalness:.7 });
@@ -444,12 +471,6 @@ function buildHunter() {
 
   // --- body ---
   const torso = P(g, new THREE.CylinderGeometry(0.16, 0.19, 0.5, 9), camoA, 0.02, 0.82, 0);
-  // camo patches
-  for (let i=0;i<7;i++) {
-    const pm = i%2 ? camoB : camoC;
-    const patch = P(torso, new THREE.SphereGeometry(0.06, 6, 5), pm, Math.sin(i*2.4)*0.155, (i/7-0.5)*0.42, Math.cos(i*2.4)*0.155);
-    patch.scale.set(1, 0.7, 0.45);
-  }
   // legs (seated)
   for (const s of [-1,1]) {
     P(g, new THREE.CylinderGeometry(0.075, 0.065, 0.42, 7), camoB, 0.24, 0.56, s*0.11, 0, 0, Math.PI/2 - 0.25); // thigh
@@ -921,8 +942,9 @@ function dingSound(good) {
 }
 
 // ---------- Game state ----------
-const S = { START:'start', WEAPON:'weapon', INTRO:'intro', IDLE:'idle', SCOPED:'scoped', BULLET:'bullet', CELEB:'celeb', RESULT:'result', OVER:'over' };
-let pendingLevel = 0; // hunt the weapon screen will launch
+const S = { START:'start', FLYBY:'flyby', INTRO:'intro', IDLE:'idle', SCOPED:'scoped', BULLET:'bullet', CELEB:'celeb', RESULT:'result', OVER:'over' };
+let flybyT = 0;
+const FLYBY_DUR = 4.5;
 let state = S.START;
 let introT = 0;
 const INTRO_DUR = 4.2;
@@ -965,11 +987,18 @@ function loadLevel(i) {
   bloodBits.forEach(b => scene.remove(b)); bloodBits = [];
   smokeParts.forEach(p => scene.remove(p)); smokeParts = [];
   setHUD();
-  state = S.IDLE;
-  hintEl.style.opacity = 1;
   scopeEl.style.opacity = 0;
-  cineEl.style.opacity = 0;
   resultPanel.classList.add('hidden');
+  // every hunt opens with a cinematic flyby of the scene
+  state = S.FLYBY;
+  flybyT = 0;
+  hintEl.style.opacity = 0;
+  cineEl.style.opacity = 1;
+}
+function endFlyby() {
+  cineEl.style.opacity = 0;
+  if (levelIdx === 0) { state = S.INTRO; introT = 0; } // season opener: meet the hunter
+  else { state = S.IDLE; hintEl.style.opacity = 1; }
 }
 
 // ---------- Aim model ----------
@@ -1587,9 +1616,11 @@ function pressStart(y) {
   startAmbient();
   if (state === S.START) {
     startScreen.classList.add('hidden');
-    loadLevel(0);
-    state = S.INTRO; introT = 0;       // meet the hunter: 360 sweep
-    hintEl.style.opacity = 0;
+    loadLevel(0); // flyby rolls automatically
+    return;
+  }
+  if (state === S.FLYBY) {             // tap skips the flyby
+    endFlyby();
     return;
   }
   if (state === S.INTRO) {             // tap skips the intro
@@ -1610,9 +1641,7 @@ function pressStart(y) {
   if (state === S.OVER) {
     totalScore = 0;
     resultPanel.classList.add('hidden');
-    loadLevel(0);
-    state = S.INTRO; introT = 0;
-    hintEl.style.opacity = 0;
+    loadLevel(0); // new season, new flyby
     return;
   }
   if (state === S.IDLE) {
@@ -1670,6 +1699,26 @@ window.addEventListener('mousemove', e => pressMove(e.clientY));
 window.addEventListener('mouseup', pressEnd);
 
 // ---------- Camera rigs ----------
+function flybyCamera() {
+  // sweep: open on the quarry, rise over the lane, settle in behind the hunter
+  const D = LEVELS[levelIdx].dist;
+  const a = animalGroup.position;
+  const u0 = Math.min(1, flybyT / FLYBY_DUR);
+  const u = u0*u0*(3-2*u0);
+  const P0 = new THREE.Vector3(a.x + 8, 2.5 + animalGroup.userData.size*1.5, a.z - 14);
+  const P1 = new THREE.Vector3(-7, 10 + D*0.05, a.z * 0.45);
+  const P2 = new THREE.Vector3(-0.9, hunterY + 1.75, 4.6);
+  const w0 = (1-u)*(1-u), w1 = 2*(1-u)*u, w2 = u*u;
+  camera.fov = 50;
+  camera.position.set(
+    P0.x*w0 + P1.x*w1 + P2.x*w2,
+    P0.y*w0 + P1.y*w1 + P2.y*w2,
+    P0.z*w0 + P1.z*w1 + P2.z*w2
+  );
+  const look = a.clone(); look.y += animalGroup.userData.size * 0.5;
+  camera.lookAt(look);
+  camera.updateProjectionMatrix();
+}
 function introCamera() {
   // full 360 sweep around the hunter
   const c = new THREE.Vector3(1.05, hunterY + 1.0, 2.4);
@@ -1932,6 +1981,11 @@ function tick() {
   }
 
   if (state === S.IDLE || state === S.RESULT || state === S.OVER || state === S.START || state === S.WEAPON) idleCamera(t);
+  else if (state === S.FLYBY) {
+    flybyT += dt;
+    flybyCamera();
+    if (flybyT >= FLYBY_DUR) endFlyby();
+  }
   else if (state === S.INTRO) {
     introT += dt;
     introCamera();
