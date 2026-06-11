@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Mikeys Big Game Hunting</title>
+<title>Mike's Big Hunt</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
   html,body { width:100%; height:100%; overflow:hidden; background:#000; touch-action:none; font-family:Georgia,'Times New Roman',serif; }
@@ -91,7 +91,7 @@
 </div>
 
 <div class="panel" id="startScreen">
-  <div class="logo">&#129420; MIKEYS BIG GAME HUNTING</div>
+  <div class="logo">&#129420; MIKE'S BIG HUNT</div>
   <p style="font-size:22px">Welcome to Mike's Big Hunt.</p>
   <p>Tap and hold the screen to take aim at your game. <b>Swipe up</b> when the crosshair is in the perfect spot. Enjoy the hunt!</p>
   <div class="tap">Tap to start hunting</div>
@@ -1214,7 +1214,9 @@ function tick() {
   });
 
   if (animalGroup) {
-    animateAnimal(dt, t);
+    // bullet in flight = slow-mo: the world holds still until impact
+    const frozen = state === S.BULLET && !B.impactDone;
+    if (!frozen) animateAnimal(dt, t);
     if (animalBlob) animalBlob.position.set(animalGroup.position.x, 0.02, animalGroup.position.z);
   }
 
