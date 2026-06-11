@@ -98,7 +98,7 @@
   <div class="score"><div id="totScore">0 pts</div><div class="sub" id="lvlCount"></div><div class="sub" id="bestScore"></div></div>
 </div>
 
-<div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to take aim</div><div>Lift your finger to fire</div></div>
+<div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to take aim</div><div>Slide up/down to zoom &bull; lift your finger to fire</div></div>
 
 <div class="overlay" id="scope">
   <div class="aimview" id="aimRifle">
@@ -116,7 +116,7 @@
     <div class="rib"></div>
     <div class="bead"></div>
   </div>
-  <div id="fireHint">HOLD STEADY &bull; LIFT FINGER TO FIRE</div>
+  <div id="fireHint">SLIDE UP/DOWN TO ZOOM &bull; LIFT FINGER TO FIRE</div>
   <div id="scopeInfo"></div>
 </div>
 
@@ -136,18 +136,34 @@
 <div class="panel" id="startScreen">
   <div class="logo">&#129420; MIKE'S BIG HUNT</div>
   <p style="font-size:22px">Welcome to Mike's Big Hunt.</p>
-  <p>Tap and hold the screen to take aim at your game. <b>Lift your finger</b> when the crosshair is in the perfect spot. Enjoy the hunt!</p>
+  <p>Tap and hold the screen to take aim at your game. Slide up or down to zoom. <b>Lift your finger</b> when the crosshair is in the perfect spot. Score 55 or better to advance. Enjoy the hunt!</p>
   <div class="tap">Tap to start hunting</div>
   <div style="position:absolute;bottom:12px;left:0;right:0;font-size:11px;opacity:.5">Gunshot audio: &ldquo;Sniper Rifle&rdquo; Kibblesbob (Public Domain) &amp; &ldquo;Shotgun Blast&rdquo; Jim Rogers (CC BY 3.0) via SoundBible.com</div>
 </div>
 
 <div id="wsel">
-  <div class="wopt active" data-w="rifle" title="Rifle">&#127919;</div>
+  <div class="wopt active" data-w="rifle" title="Rifle">
+    <svg viewBox="0 0 64 24" width="42" height="18">
+      <rect x="1" y="11" width="34" height="3" rx="1" fill="#cfd4d8"/>
+      <rect x="33" y="9" width="13" height="7" rx="1.5" fill="#9a7350"/>
+      <path d="M46 9 L62 13 L62 21 L52 21 L46 16 Z" fill="#9a7350"/>
+      <rect x="35" y="3.5" width="11" height="4" rx="2" fill="#3a3f44"/>
+      <rect x="39.5" y="7.5" width="2" height="2" fill="#3a3f44"/>
+      <path d="M43 16 h4 l1.6 4.5 h-3.2 Z" fill="#3a3f44"/>
+    </svg>
+  </div>
   <div class="wopt" data-w="bow" title="Bow">&#127993;</div>
-  <div class="wopt" data-w="shotgun" title="Shotgun">&#128165;</div>
+  <div class="wopt" data-w="shotgun" title="Shotgun">
+    <svg viewBox="0 0 20 36" width="17" height="30">
+      <rect x="3" y="1.5" width="14" height="23" rx="2.5" fill="#c8342a"/>
+      <rect x="4.5" y="5" width="11" height="2" fill="#a8281f"/>
+      <rect x="2" y="24" width="16" height="9.5" rx="1.5" fill="#d8a830"/>
+      <circle cx="10" cy="29" r="2.4" fill="#8a6820"/>
+    </svg>
+  </div>
 </div>
 
-<div id="verBadge">v1.43</div>
+<div id="verBadge">v1.46</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -168,11 +184,23 @@ renderer.outputEncoding = THREE.sRGBEncoding;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2000);
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+// keep the render target matched to the canvas's REAL on-screen size every frame —
+// mobile browser chrome (address bars) resizes the viewport without firing resize,
+// which stretched the canvas and pushed the crosshair off the true aim point
+function resizeToDisplay() {
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  if (!w || !h) return;
+  const pr = Math.min(window.devicePixelRatio, 1.75);
+  if (Math.abs(canvas.width - w*pr) > 1 || Math.abs(canvas.height - h*pr) > 1) {
+    renderer.setPixelRatio(pr);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+window.addEventListener('resize', resizeToDisplay);
+window.addEventListener('orientationchange', () => setTimeout(resizeToDisplay, 250));
 
 const clock = new THREE.Clock();
 
@@ -1071,6 +1099,8 @@ const bestPerHunt = new Array(LEVELS.length).fill(-1); // best single shot per h
 let aimPhase = rnd(0, 100);
 let scopedTime = 0;
 let heartT = 0, birdT = 3;
+let aimTrail = []; // recent aim offsets, to forgive touch-release latency
+let zoomAdj = 1;   // finger-slide zoom while scoped
 
 // bullet cam data
 const B = { active:false, t:0, dur:2.5, from:new THREE.Vector3(), to:new THREE.Vector3(), dir:new THREE.Vector3(), result:null, impactDone:false, endT:0 };
@@ -1091,7 +1121,7 @@ function setHUD() {
   $('bestScore').textContent = sessionBest > 0 ? 'Beat: ' + sessionBest + ' pts' : '';
 }
 
-function loadLevel(i) {
+function loadLevel(i, skipFly) {
   levelIdx = i;
   buildWorld(LEVELS[i]);
   animalAnim = null;
@@ -1106,11 +1136,17 @@ function loadLevel(i) {
   setHUD();
   scopeEl.style.opacity = 0;
   resultPanel.classList.add('hidden');
-  // every hunt opens with a cinematic flyby of the scene
-  state = S.FLYBY;
-  flybyT = 0;
-  hintEl.style.opacity = 0;
-  cineEl.style.opacity = 1;
+  // every hunt opens with a cinematic flyby — except retries, which get right back to it
+  if (skipFly) {
+    state = S.IDLE;
+    hintEl.style.opacity = 1;
+    cineEl.style.opacity = 0;
+  } else {
+    state = S.FLYBY;
+    flybyT = 0;
+    hintEl.style.opacity = 0;
+    cineEl.style.opacity = 1;
+  }
 }
 function endFlyby() {
   cineEl.style.opacity = 0;
@@ -1168,7 +1204,8 @@ function scopedFov() {
   let fov = 2 * Math.atan(span / L.dist) * 180 / Math.PI;
   // only the rifle has magnified glass; bow/shotgun aim with a wider natural view
   fov *= weapon === 'rifle' ? 1 : (weapon === 'bow' ? 1.5 : 1.8);
-  return Math.min(34, Math.max(2.2, fov));
+  fov *= zoomAdj; // finger-slide zoom
+  return Math.min(40, Math.max(1.5, fov));
 }
 
 // ---------- Scoring ----------
@@ -1194,7 +1231,12 @@ function fire() {
   hintEl.style.opacity = 0;
 
   const V = vitalWorld();
-  const off = aimOffset(scopedTime);
+  // use the best aim from the last ~130ms — the shot you SAW when you decided to lift
+  let off = aimOffset(scopedTime);
+  const nowT = performance.now();
+  for (const s of aimTrail) {
+    if (nowT - s.pt <= 130 && s.o.length() < off.length()) off = s.o;
+  }
   // shotgun pattern scatters — forgiving up close, rough at distance
   if (WEAPONS[weapon].scatter) {
     const sr = animalGroup.userData.vitalR * 0.55 * (LEVELS[levelIdx].dist / 100) * Math.random();
@@ -2082,7 +2124,7 @@ function showResult() {
   cineEl.style.opacity = 0;
   const r = B.result;
   renderVitalsDiagram(B.offX, B.offY, B.vitalR, B.mirror, B.animalType);
-  totalScore += r.pts;
+  if (r.pts >= 55) totalScore += r.pts; // failed attempts don't bank points
   $('resTitle').textContent = r.title;
   $('resStars').textContent = r.stars > 0 ? '★'.repeat(r.stars) + '☆'.repeat(3-r.stars) : '—';
   $('resPts').textContent = '+' + r.pts;
@@ -2094,8 +2136,9 @@ function showResult() {
   } else {
     $('resBest').textContent = 'Your best on this hunt: ' + prev + ' pts';
   }
-  $('resDesc').textContent = r.desc;
-  $('resTap').textContent = levelIdx < LEVELS.length-1 ? 'Tap for the next hunt' : 'Tap to see your final tally';
+  $('resDesc').textContent = r.desc + (r.pts < 55 ? ' You need a 55 or better to move on.' : '');
+  $('resTap').textContent = r.pts < 55 ? 'Tap to try this hunt again'
+    : (levelIdx < LEVELS.length-1 ? 'Tap for the next hunt' : 'Tap to see your final tally');
   resultPanel.classList.remove('hidden');
   setHUD();
   dingSound(r.pts >= 55);
@@ -2149,6 +2192,7 @@ function pressStart(y) {
   }
   if (state === S.RESULT) {
     resultPanel.classList.add('hidden');
+    if ((B.result ? B.result.pts : 0) < 55) { loadLevel(levelIdx, true); return; } // didn't earn the pass — same hunt, try again
     if (levelIdx < LEVELS.length - 1) loadLevel(levelIdx + 1);
     else startFinale(); // season's over — party regardless of the tally
     return;
@@ -2167,6 +2211,8 @@ function pressStart(y) {
     aimPhase = rnd(0, 100);
     pressing = true; pressStartY = y; fired = false;
     scopeEnterT = performance.now();
+    aimTrail = [];
+    zoomAdj = 1;
     scopeEl.style.opacity = 1;
     hintEl.style.opacity = 0;
     // weapon-appropriate aim view: scope only on the rifle
@@ -2178,7 +2224,10 @@ function pressStart(y) {
   }
 }
 function pressMove(y) {
-  // movement no longer fires — the trigger is lifting your finger
+  // slide up = zoom in, slide down = zoom out; the trigger is still lifting your finger
+  if (state !== S.SCOPED || !pressing) return;
+  const d = pressStartY - y; // pixels slid upward
+  zoomAdj = Math.max(0.45, Math.min(2.2, Math.pow(0.5, d / 220)));
 }
 function pressEnd() {
   pressing = false;
@@ -2468,6 +2517,7 @@ function animateAnimal(dt, t) {
 let wselShown = true;
 function tick() {
   requestAnimationFrame(tick);
+  resizeToDisplay();
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
@@ -2481,6 +2531,9 @@ function tick() {
 
   if (state === S.SCOPED) {
     scopedTime += dt;
+    // remember the last few frames of aim — touch release is slower than a mouse click
+    aimTrail.push({ pt: performance.now(), o: aimOffset(scopedTime) });
+    if (aimTrail.length > 16) aimTrail.shift();
     heartT -= dt;
     if (heartT <= 0) { heartThump(); heartT = Math.max(0.55, 0.95 - scopedTime*0.025); }
   }
