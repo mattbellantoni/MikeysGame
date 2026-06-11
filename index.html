@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Big Woods Hunter</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#000; touch-action:none; font-family:Georgia,'Times New Roman',serif; }
+  #c { display:block; width:100%; height:100%; }
+
+  .overlay { position:fixed; inset:0; pointer-events:none; }
+
+  /* HUD */
+  #hud { top:0; left:0; right:0; padding:14px 20px; display:flex; justify-content:space-between; align-items:flex-start; color:#fff; text-shadow:0 2px 6px rgba(0,0,0,.8); }
+  #hud .lvl { font-size:20px; font-weight:bold; letter-spacing:1px; }
+  #hud .sub { font-size:15px; opacity:.85; margin-top:3px; }
+  #hud .score { font-size:22px; font-weight:bold; text-align:right; }
+
+  /* hint */
+  #hint { bottom:30px; left:0; right:0; text-align:center; color:#fff; font-size:19px; text-shadow:0 2px 8px rgba(0,0,0,.9); transition:opacity .4s; }
+  #hint .big { font-size:23px; font-weight:bold; }
+
+  /* Scope */
+  #scope { opacity:0; transition:opacity .25s; }
+  #scope .mask { position:absolute; inset:0;
+    background:radial-gradient(circle 38vmin at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 91%, rgba(0,0,0,.55) 94%, rgba(5,8,5,.985) 100%); }
+  #scope .ring { position:absolute; left:50%; top:50%; width:72vmin; height:72vmin; transform:translate(-50%,-50%);
+    border-radius:50%; border:3px solid rgba(0,0,0,.9); box-shadow:inset 0 0 60px rgba(0,0,0,.65), inset 0 0 8px rgba(120,255,120,.12); }
+  .xh { position:absolute; left:50%; top:50%; background:rgba(10,10,10,.92); }
+  .xh.h { width:64vmin; height:2px; transform:translate(-50%,-50%); }
+  .xh.v { width:2px; height:64vmin; transform:translate(-50%,-50%); }
+  .xh.dot { width:7px; height:7px; border-radius:50%; background:rgba(220,40,40,.95); transform:translate(-50%,-50%); box-shadow:0 0 6px rgba(255,60,60,.8); }
+  #scopeInfo { position:absolute; left:50%; bottom:9%; transform:translateX(-50%); color:#cfe8cf; font-size:16px; letter-spacing:2px; text-shadow:0 0 8px #000; font-family:monospace; }
+  #fireHint { position:absolute; left:50%; top:13%; transform:translateX(-50%); color:#fff; font-size:17px; text-shadow:0 0 10px #000; opacity:.9; }
+
+  /* cinematic bars */
+  #cine { opacity:0; transition:opacity .3s; }
+  #cine .bar { position:absolute; left:0; right:0; height:11%; background:#000; }
+  #cine .bar.t { top:0; } #cine .bar.b { bottom:0; }
+
+  /* panels */
+  .panel { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.55); color:#fff; text-align:center; padding:24px; transition:opacity .35s; }
+  .panel.hidden { opacity:0; pointer-events:none; }
+  .panel h1 { font-size:44px; margin-bottom:10px; text-shadow:0 3px 12px #000; }
+  .panel h2 { font-size:30px; margin-bottom:8px; text-shadow:0 3px 12px #000; }
+  .panel p { font-size:19px; max-width:560px; line-height:1.5; opacity:.92; margin-bottom:8px; }
+  .panel .pts { font-size:58px; font-weight:bold; color:#ffd76a; text-shadow:0 3px 14px #000; margin:8px 0; }
+  .panel .stars { font-size:38px; letter-spacing:8px; margin-bottom:6px; }
+  .panel .tap { margin-top:26px; font-size:21px; padding:16px 44px; border:2px solid rgba(255,255,255,.85); border-radius:50px;
+    background:rgba(40,70,40,.65); animation:pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:.92} 50%{transform:scale(1.06);opacity:1} }
+  #startScreen { background:linear-gradient(rgba(0,20,5,.55),rgba(0,10,2,.8)); }
+  #startScreen .logo { font-size:54px; color:#ffd76a; text-shadow:0 4px 16px #000; margin-bottom:4px; }
+  #flash { background:#fff; opacity:0; transition:opacity .1s; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="overlay" id="hud">
+  <div><div class="lvl" id="lvlName">Level 1</div><div class="sub" id="lvlSub"></div></div>
+  <div class="score"><div id="totScore">0 pts</div><div class="sub" id="lvlCount"></div></div>
+</div>
+
+<div class="overlay" id="hint"><div class="big">Touch &amp; hold anywhere to look through the scope</div><div>Slide your finger forward to fire</div></div>
+
+<div class="overlay" id="scope">
+  <div class="mask"></div><div class="ring"></div>
+  <div class="xh h"></div><div class="xh v"></div><div class="xh dot"></div>
+  <div id="fireHint">SLIDE FORWARD TO FIRE &#9650;</div>
+  <div id="scopeInfo"></div>
+</div>
+
+<div class="overlay" id="cine"><div class="bar t"></div><div class="bar b"></div></div>
+<div class="overlay" id="flash"></div>
+
+<div class="panel hidden" id="resultPanel">
+  <h2 id="resTitle"></h2>
+  <div class="stars" id="resStars"></div>
+  <div class="pts" id="resPts"></div>
+  <p id="resDesc"></p>
+  <div class="tap" id="resTap">Tap for next hunt</div>
+</div>
+
+<div class="panel" id="startScreen">
+  <div class="logo">&#127795; BIG WOODS HUNTER</div>
+  <p style="font-size:22px">A hunting adventure built for one finger.</p>
+  <p>Touch and hold the screen to raise your scope. The rifle steadies itself near the target &mdash; wait for the moment, then <b>slide your finger forward</b> to squeeze the trigger.</p>
+  <p>Ten hunts. Small game to big game. Make every shot count.</p>
+  <div class="tap">Tap to start hunting</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+/* ============================================================
+   BIG WOODS HUNTER — single-touch accessible hunting simulator
+   ============================================================ */
+
+// ---------- Renderer / scene basics ----------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2000);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clock = new THREE.Clock();
+
+// ---------- Helpers ----------
+const Mat = (c, extra) => new THREE.MeshStandardMaterial(Object.assign({ color:c, roughness:.92, metalness:0, flatShading:true }, extra||{}));
+function P(parent, geo, mat, x,y,z, rx,ry,rz) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x,y,z);
+  if (rx||ry||rz) m.rotation.set(rx||0, ry||0, rz||0);
+  m.castShadow = true; m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+const rnd = (a,b) => a + Math.random()*(b-a);
+
+// ---------- Environments ----------
+const ENVS = {
+  springMeadow:{ sky:0x8ec9e8, fog:0xc9ddc9, ground:0x4f7a36, tree:0x2f6b2f, trunk:0x6b4a2f,
+    sunCol:0xfff2d8, sunI:1.15, sunPos:[60,90,40], amb:0.55, hemi:0.5, mtn:0x7e94a8, snow:false, label:'Spring meadow • clear morning' },
+  goldenMorning:{ sky:0xf6c98a, fog:0xe8cba0, ground:0x6e7d3a, tree:0x4a6b2a, trunk:0x5d4027,
+    sunCol:0xffd9a0, sunI:1.25, sunPos:[90,35,60], amb:0.45, hemi:0.45, mtn:0x9d8a78, snow:false, label:'Golden hour • light haze' },
+  autumnWood:{ sky:0xa8c4e0, fog:0xd8c8a8, ground:0x8a6b34, tree:0xb05f24, trunk:0x5a4030,
+    sunCol:0xffe8c0, sunI:1.05, sunPos:[50,70,-30], amb:0.5, hemi:0.45, mtn:0x8a7e70, snow:false, label:'Autumn woods • crisp afternoon' },
+  foggyHollow:{ sky:0xb8c2c2, fog:0xb8c2c0, ground:0x46603a, tree:0x32503a, trunk:0x4a4038,
+    sunCol:0xdfe8e8, sunI:0.7, sunPos:[40,80,20], amb:0.7, hemi:0.55, mtn:0x9aa6a6, snow:false, label:'Fog rolling through the hollow' },
+  duskRidge:{ sky:0x9a6e9e, fog:0xb08aa0, ground:0x4a5238, tree:0x2d4030, trunk:0x453828,
+    sunCol:0xff9e6a, sunI:0.85, sunPos:[-100,18,40], amb:0.4, hemi:0.4, mtn:0x6a5878, snow:false, label:'Dusk on the ridge' },
+  deepForest:{ sky:0x9ecbe8, fog:0xb8d4b8, ground:0x3e6630, tree:0x254f25, trunk:0x4f3a26,
+    sunCol:0xfff6e0, sunI:1.1, sunPos:[30,95,50], amb:0.5, hemi:0.5, mtn:0x6e8496, snow:false, label:'Deep forest • midday' },
+  stormPines:{ sky:0x768088, fog:0x8a949a, ground:0x3a523a, tree:0x223e2c, trunk:0x3e3530,
+    sunCol:0xc8d0d8, sunI:0.65, sunPos:[20,70,-40], amb:0.65, hemi:0.5, mtn:0x5e686e, snow:false, label:'Storm brewing • heavy sky' },
+  snowMountain:{ sky:0xc8dcec, fog:0xdde8f0, ground:0xe8eef2, tree:0x3a5a44, trunk:0x4a4038,
+    sunCol:0xeef4ff, sunI:1.05, sunPos:[70,60,30], amb:0.6, hemi:0.6, mtn:0xc2d2de, snow:true, label:'High country • falling snow' },
+  pinkDawn:{ sky:0xf0a8b8, fog:0xeec0c8, ground:0x5a6840, tree:0x3a5530, trunk:0x4f3a28,
+    sunCol:0xffc8d0, sunI:0.95, sunPos:[110,25,-50], amb:0.5, hemi:0.45, mtn:0xb88a98, snow:false, label:'First light • dawn mist' },
+  moonlit:{ sky:0x16243e, fog:0x1c2a44, ground:0x1e3024, tree:0x14281c, trunk:0x242020,
+    sunCol:0xaac4ee, sunI:0.55, sunPos:[-60,80,30], amb:0.3, hemi:0.3, mtn:0x2a3a52, snow:false, label:'Full moon • still night' }
+};
+
+// ---------- Levels ----------
+const LEVELS = [
+  { name:'Cottontail Rabbit', type:'rabbit',  dist:30,  env:'springMeadow' },
+  { name:'Ring-necked Pheasant', type:'pheasant', dist:45, env:'goldenMorning' },
+  { name:'Wild Turkey', type:'turkey', dist:60,  env:'autumnWood' },
+  { name:'Red Fox', type:'fox', dist:80,  env:'foggyHollow' },
+  { name:'Coyote', type:'coyote', dist:105, env:'duskRidge' },
+  { name:'Whitetail Deer', type:'deer', dist:135, env:'deepForest' },
+  { name:'Wild Boar', type:'boar', dist:165, env:'stormPines' },
+  { name:'Rocky Mountain Elk', type:'elk', dist:205, env:'snowMountain' },
+  { name:'Bull Moose', type:'moose', dist:255, env:'pinkDawn' },
+  { name:'Black Bear', type:'bear', dist:310, env:'moonlit' }
+];
+
+// ---------- Animal builders ----------
+function quadruped(o) {
+  // o: {len,h,w, legH,legR, neckLen,neckTilt, headR, earLen, tailLen, color, belly, antlers, palmAntlers, tusks, snout, bushyTail, sit}
+  const g = new THREE.Group();
+  const c = Mat(o.color);
+  const body = P(g, new THREE.SphereGeometry(1, 10, 8), c, 0, o.legH + o.h*0.5, 0);
+  body.scale.set(o.len*0.5, o.h*0.5, o.w*0.5);
+  // legs
+  const lg = new THREE.CylinderGeometry(o.legR, o.legR*0.7, o.legH, 6);
+  const lx = o.len*0.32, lz = o.w*0.28;
+  [[-lx,-lz],[-lx,lz],[lx,-lz],[lx,lz]].forEach(p => P(g, lg, c, p[0], o.legH*0.5, p[1]));
+  // neck + head (head toward +x)
+  const nx = o.len*0.42, ny = o.legH + o.h*0.78;
+  const neck = P(g, new THREE.CylinderGeometry(o.headR*0.6, o.headR*0.8, o.neckLen, 7), c, nx, ny, 0, 0, 0, -o.neckTilt);
+  const hx = nx + Math.sin(o.neckTilt)*o.neckLen*0.62, hy = ny + Math.cos(o.neckTilt)*o.neckLen*0.62;
+  const head = P(g, new THREE.SphereGeometry(o.headR, 9, 7), c, hx, hy, 0);
+  head.scale.set(1.25, 1, 0.9);
+  // snout
+  if (o.snout) {
+    const sn = P(g, new THREE.CylinderGeometry(o.headR*0.35, o.headR*0.55, o.headR*1.3, 7), c, hx + o.headR*1.2, hy - o.headR*0.15, 0, 0, 0, Math.PI/2);
+  }
+  // ears
+  if (o.earLen > 0) {
+    const eg = new THREE.ConeGeometry(o.headR*0.32, o.earLen, 5);
+    P(g, eg, c, hx - o.headR*0.3, hy + o.headR*0.8 + o.earLen*0.4, o.headR*0.5, 0.25, 0, 0.15);
+    P(g, eg, c, hx - o.headR*0.3, hy + o.headR*0.8 + o.earLen*0.4, -o.headR*0.5, -0.25, 0, 0.15);
+  }
+  // tail
+  if (o.bushyTail) {
+    const t = P(g, new THREE.SphereGeometry(o.h*0.22, 7, 6), c, -o.len*0.55, o.legH + o.h*0.55, 0);
+    t.scale.set(2.2, 0.8, 0.8);
+  } else if (o.tailLen > 0) {
+    P(g, new THREE.CylinderGeometry(o.h*0.05, o.h*0.02, o.tailLen, 5), c, -o.len*0.52, o.legH + o.h*0.6, 0, 0, 0, 1.0);
+  }
+  // antlers
+  const boneMat = Mat(0xd8cdb0);
+  if (o.antlers) {
+    for (const s of [-1, 1]) {
+      const a = P(g, new THREE.CylinderGeometry(0.025*o.antlers, 0.035*o.antlers, o.headR*3.2, 5), boneMat, hx - o.headR*0.2, hy + o.headR*1.6, s*o.headR*0.45, s*0.5, 0, 0.35);
+      for (let i=0;i<3;i++)
+        P(a, new THREE.CylinderGeometry(0.015*o.antlers, 0.022*o.antlers, o.headR*1.2, 4), boneMat, 0, -o.headR*1.1 + i*o.headR*1.0, 0, 0.9, 0, 0.5);
+    }
+  }
+  if (o.palmAntlers) {
+    for (const s of [-1, 1]) {
+      const pa = P(g, new THREE.BoxGeometry(o.headR*1.8, o.headR*1.5, o.headR*0.18), boneMat, hx - o.headR*0.1, hy + o.headR*1.8, s*o.headR*1.1, 0.3*s, s*0.4, 0);
+    }
+  }
+  if (o.tusks) {
+    const tm = Mat(0xeae2cc);
+    for (const s of [-1,1]) P(g, new THREE.ConeGeometry(0.03, 0.16, 5), tm, hx + o.headR*1.1, hy - o.headR*0.4, s*o.headR*0.5, 2.6, 0, 0);
+  }
+  const shoulderH = o.legH + o.h*0.62;
+  g.userData = {
+    vital: new THREE.Vector3(o.len*0.18, shoulderH, 0),  // heart/lungs behind front shoulder
+    vitalR: o.h*0.34,
+    size: o.legH + o.h,
+    head: head
+  };
+  return g;
+}
+
+function bird(o) {
+  // o: {bodyR, neckLen, headR, tailFan, color, headColor, wattle}
+  const g = new THREE.Group();
+  const c = Mat(o.color);
+  const body = P(g, new THREE.SphereGeometry(o.bodyR, 10, 8), c, 0, o.bodyR*1.15, 0);
+  body.scale.set(1.5, 1.05, 0.95);
+  // legs
+  const lm = Mat(0x9a8a4a);
+  for (const s of [-1,1]) P(g, new THREE.CylinderGeometry(0.014, 0.012, o.bodyR*0.9, 5), lm, s*o.bodyR*0.25, o.bodyR*0.45, 0);
+  // neck + head
+  const hc = Mat(o.headColor || o.color);
+  P(g, new THREE.CylinderGeometry(o.headR*0.5, o.headR*0.7, o.neckLen, 6), hc, o.bodyR*1.2, o.bodyR*1.5 + o.neckLen*0.4, 0, 0, 0, -0.35);
+  const head = P(g, new THREE.SphereGeometry(o.headR, 8, 6), hc, o.bodyR*1.45, o.bodyR*1.55 + o.neckLen*0.85, 0);
+  P(g, new THREE.ConeGeometry(o.headR*0.35, o.headR*1.1, 5), Mat(0xd8a830), head.position.x + o.headR*0.9, head.position.y, 0, 0, 0, -Math.PI/2);
+  if (o.wattle) P(g, new THREE.SphereGeometry(o.headR*0.4, 6, 5), Mat(0xc03030), head.position.x + o.headR*0.4, head.position.y - o.headR*0.8, 0);
+  // tail
+  if (o.tailFan) {
+    const fm = Mat(0x7a4a22);
+    for (let i=-2;i<=2;i++)
+      P(g, new THREE.BoxGeometry(o.bodyR*1.6, o.bodyR*1.1, 0.02), fm, -o.bodyR*1.5, o.bodyR*1.6, 0, 0, i*0.28, 0.7);
+  } else {
+    const t = P(g, new THREE.ConeGeometry(o.bodyR*0.3, o.bodyR*2.6, 5), c, -o.bodyR*1.9, o.bodyR*1.3, 0, 0, 0, Math.PI/2 - 0.25);
+  }
+  g.userData = {
+    vital: new THREE.Vector3(o.bodyR*0.25, o.bodyR*1.2, 0),
+    vitalR: o.bodyR*0.55,
+    size: o.bodyR*2.4,
+    head: head
+  };
+  return g;
+}
+
+function rabbitModel() {
+  const g = new THREE.Group();
+  const c = Mat(0x9a8468);
+  const body = P(g, new THREE.SphereGeometry(0.16, 9, 7), c, 0, 0.15, 0);
+  body.scale.set(1.35, 1.1, 0.95);
+  const head = P(g, new THREE.SphereGeometry(0.09, 8, 6), c, 0.17, 0.28, 0);
+  const eg = new THREE.CylinderGeometry(0.018, 0.025, 0.2, 5);
+  P(g, eg, c, 0.15, 0.42, 0.035, 0.12, 0, 0.18);
+  P(g, eg, c, 0.15, 0.42, -0.035, -0.12, 0, 0.18);
+  P(g, new THREE.SphereGeometry(0.045, 6, 5), Mat(0xf0ece0), -0.2, 0.16, 0); // tail
+  g.userData = { vital: new THREE.Vector3(0.04, 0.17, 0), vitalR: 0.085, size: 0.42, head };
+  return g;
+}
+
+function makeAnimal(type) {
+  switch (type) {
+    case 'rabbit': return rabbitModel();
+    case 'pheasant': return bird({ bodyR:0.16, neckLen:0.16, headR:0.055, tailFan:false, color:0x8a5a2a, headColor:0x2a5a3a });
+    case 'turkey': return bird({ bodyR:0.30, neckLen:0.24, headR:0.06, tailFan:true, color:0x3a2e26, headColor:0x8a8a9a, wattle:true });
+    case 'fox': return quadruped({ len:0.75, h:0.34, w:0.26, legH:0.30, legR:0.030, neckLen:0.22, neckTilt:0.7, headR:0.10, earLen:0.12, tailLen:0, bushyTail:true, color:0xb5562a });
+    case 'coyote': return quadruped({ len:1.0, h:0.45, w:0.32, legH:0.42, legR:0.038, neckLen:0.28, neckTilt:0.7, headR:0.12, earLen:0.13, tailLen:0.4, color:0x8a7a5e, snout:true });
+    case 'deer': return quadruped({ len:1.5, h:0.70, w:0.45, legH:0.75, legR:0.045, neckLen:0.55, neckTilt:0.55, headR:0.14, earLen:0.16, tailLen:0.2, antlers:1.0, color:0xa07848 });
+    case 'boar': return quadruped({ len:1.4, h:0.75, w:0.55, legH:0.42, legR:0.055, neckLen:0.25, neckTilt:1.0, headR:0.20, earLen:0.10, tailLen:0.25, tusks:true, snout:true, color:0x4a3c32 });
+    case 'elk': return quadruped({ len:2.2, h:1.05, w:0.65, legH:1.05, legR:0.065, neckLen:0.8, neckTilt:0.5, headR:0.18, earLen:0.18, tailLen:0.15, antlers:1.8, color:0x7d6243 });
+    case 'moose': return quadruped({ len:2.6, h:1.25, w:0.8, legH:1.25, legR:0.08, neckLen:0.7, neckTilt:0.7, headR:0.24, earLen:0.2, tailLen:0.1, palmAntlers:true, snout:true, color:0x4e3a28 });
+    case 'bear': return quadruped({ len:1.9, h:1.05, w:0.85, legH:0.55, legR:0.10, neckLen:0.4, neckTilt:0.9, headR:0.22, earLen:0.10, tailLen:0, color:0x2e2620 });
+  }
+}
+
+// ---------- Hunter (wheelchair, beard, aviators, camo, rifle) ----------
+let muzzleWorld = new THREE.Vector3();
+let hunterGroup, rifleGroup;
+
+function buildHunter() {
+  const g = new THREE.Group();
+  const camoA = Mat(0x5a6b3c), camoB = Mat(0x44532e), camoC = Mat(0x6e6244);
+  const skin = Mat(0xc9a07a);
+  const dark = Mat(0x1c1c1c, { roughness:.5 });
+  const metal = Mat(0x6a6f74, { roughness:.35, metalness:.7 });
+
+  // --- wheelchair ---
+  const wheelGeo = new THREE.TorusGeometry(0.32, 0.035, 10, 24);
+  for (const s of [-1,1]) {
+    const w = P(g, wheelGeo, dark, 0, 0.32, s*0.30, 0, 0, 0);
+    // spokes
+    for (let i=0;i<4;i++) P(w, new THREE.CylinderGeometry(0.012,0.012,0.58,5), metal, 0,0,0, 0,0, i*Math.PI/4);
+    // hand rim
+    P(g, new THREE.TorusGeometry(0.26, 0.018, 8, 20), metal, 0, 0.32, s*0.36);
+    // caster
+    P(g, new THREE.CylinderGeometry(0.07,0.07,0.04,10), dark, 0.42, 0.07, s*0.22, Math.PI/2, 0, 0);
+  }
+  // frame + seat
+  P(g, new THREE.BoxGeometry(0.5, 0.06, 0.52), dark, 0.08, 0.50, 0);
+  P(g, new THREE.BoxGeometry(0.06, 0.55, 0.52), dark, -0.20, 0.78, 0);
+  for (const s of [-1,1]) {
+    P(g, new THREE.CylinderGeometry(0.02,0.02,0.45,6), metal, 0.30, 0.30, s*0.26, 0.5, 0, 0.5);
+    P(g, new THREE.BoxGeometry(0.16,0.03,0.12), dark, 0.46, 0.12, s*0.13); // footrests
+  }
+
+  // --- body ---
+  const torso = P(g, new THREE.CylinderGeometry(0.16, 0.19, 0.5, 9), camoA, 0.02, 0.82, 0);
+  // camo patches
+  for (let i=0;i<7;i++) {
+    const pm = i%2 ? camoB : camoC;
+    const patch = P(torso, new THREE.SphereGeometry(0.06, 6, 5), pm, Math.sin(i*2.4)*0.155, (i/7-0.5)*0.42, Math.cos(i*2.4)*0.155);
+    patch.scale.set(1, 0.7, 0.45);
+  }
+  // legs (seated)
+  for (const s of [-1,1]) {
+    P(g, new THREE.CylinderGeometry(0.075, 0.065, 0.42, 7), camoB, 0.24, 0.56, s*0.11, 0, 0, Math.PI/2 - 0.25); // thigh
+    P(g, new THREE.CylinderGeometry(0.06, 0.05, 0.42, 7), camoA, 0.43, 0.34, s*0.12, 0.05, 0, 0.12); // shin
+    P(g, new THREE.BoxGeometry(0.20, 0.07, 0.09), dark, 0.47, 0.135, s*0.12); // boot
+  }
+  // head
+  const head = P(g, new THREE.SphereGeometry(0.115, 10, 8), skin, 0.04, 1.22, 0);
+  // black beard
+  const beard = P(g, new THREE.SphereGeometry(0.105, 8, 7), Mat(0x141414), 0.085, 1.165, 0);
+  beard.scale.set(0.95, 0.85, 0.9);
+  // aviator sunglasses
+  const lensMat = new THREE.MeshStandardMaterial({ color:0x222a22, roughness:.15, metalness:.85 });
+  for (const s of [-1,1]) {
+    const lens = P(g, new THREE.SphereGeometry(0.042, 8, 6), lensMat, 0.135, 1.255, s*0.048);
+    lens.scale.set(0.45, 0.9, 1);
+  }
+  P(g, new THREE.CylinderGeometry(0.006,0.006,0.05,5), metal, 0.14, 1.265, 0, Math.PI/2, 0, 0); // bridge
+  // camo cap
+  const cap = P(g, new THREE.SphereGeometry(0.12, 9, 6, 0, Math.PI*2, 0, Math.PI/2), camoB, 0.035, 1.265, 0);
+  P(g, new THREE.BoxGeometry(0.12, 0.018, 0.13), camoB, 0.14, 1.30, 0);
+
+  // --- rifle (aimed downrange = -z) ---
+  rifleGroup = new THREE.Group();
+  const wood = Mat(0x5a3a22, { roughness:.6 });
+  P(rifleGroup, new THREE.BoxGeometry(0.07, 0.10, 0.45), wood, 0, -0.01, 0.18); // stock
+  P(rifleGroup, new THREE.CylinderGeometry(0.018, 0.018, 0.85, 8), dark, 0, 0.02, -0.45, Math.PI/2, 0, 0); // barrel
+  P(rifleGroup, new THREE.CylinderGeometry(0.030, 0.030, 0.22, 8), dark, 0, 0.085, -0.12, Math.PI/2, 0, 0); // scope tube
+  P(rifleGroup, new THREE.CylinderGeometry(0.038, 0.038, 0.05, 8), metal, 0, 0.085, -0.24, Math.PI/2, 0, 0); // objective
+  P(rifleGroup, new THREE.BoxGeometry(0.02, 0.05, 0.02), dark, 0, 0.045, -0.12);
+  rifleGroup.position.set(0.12, 1.06, -0.28);
+  rifleGroup.rotation.y = -0.10;
+  g.add(rifleGroup);
+  // arms
+  P(g, new THREE.CylinderGeometry(0.045,0.04,0.34,7), camoA, 0.10, 0.97, 0.13, 0.9, 0, -0.5);
+  P(g, new THREE.CylinderGeometry(0.045,0.04,0.30,7), camoA, 0.13, 1.0, -0.14, -1.2, 0, -0.3);
+
+  g.position.set(1.05, 0, 2.4);
+  g.rotation.y = 0.14;
+  return g;
+}
+
+// ---------- World building ----------
+let worldGroup = null, animalGroup = null, snowPts = null;
+let sunLight, ambLight, hemiLight;
+
+function pineTree(scale, env) {
+  const t = new THREE.Group();
+  const trunkMat = Mat(env.trunk), folMat = Mat(env.tree);
+  P(t, new THREE.CylinderGeometry(0.12*scale, 0.2*scale, 1.4*scale, 6), trunkMat, 0, 0.7*scale, 0);
+  for (let i=0;i<3;i++) {
+    const r = (1.6 - i*0.42)*scale, h = 1.5*scale, y = (1.2 + i*0.95)*scale;
+    const cone = P(t, new THREE.ConeGeometry(r, h, 7), folMat, 0, y, 0);
+    if (env.snow) {
+      const sc = P(t, new THREE.ConeGeometry(r*0.92, h*0.35, 7), Mat(0xeef2f6), 0, y + h*0.36, 0);
+    }
+  }
+  return t;
+}
+
+function leafTree(scale, env) {
+  const t = new THREE.Group();
+  P(t, new THREE.CylinderGeometry(0.15*scale, 0.25*scale, 2*scale, 6), Mat(env.trunk), 0, scale, 0);
+  const blob = P(t, new THREE.SphereGeometry(1.4*scale, 7, 6), Mat(env.tree), 0, 2.6*scale, 0);
+  blob.scale.y = 0.85;
+  return t;
+}
+
+function buildWorld(level) {
+  if (worldGroup) { scene.remove(worldGroup); }
+  worldGroup = new THREE.Group();
+  const env = ENVS[level.env];
+  const D = level.dist;
+
+  scene.background = new THREE.Color(env.sky);
+  scene.fog = new THREE.Fog(env.fog, D*0.45, D*3.6 + 120);
+
+  // lights
+  if (!sunLight) {
+    sunLight = new THREE.DirectionalLight(0xffffff, 1);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    scene.add(sunLight);
+    ambLight = new THREE.AmbientLight(0xffffff, 0.5); scene.add(ambLight);
+    hemiLight = new THREE.HemisphereLight(0xbfd4ff, 0x3a4a2a, 0.5); scene.add(hemiLight);
+  }
+  sunLight.color.set(env.sunCol); sunLight.intensity = env.sunI;
+  sunLight.position.set(env.sunPos[0], env.sunPos[1], env.sunPos[2]);
+  const sc = sunLight.shadow.camera;
+  sc.left = -30; sc.right = 30; sc.top = 30; sc.bottom = -30; sc.far = 400;
+  sc.updateProjectionMatrix();
+  ambLight.intensity = env.amb;
+  hemiLight.intensity = env.hemi;
+
+  // ground
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(2500, 2500), Mat(env.ground));
+  ground.rotation.x = -Math.PI/2;
+  ground.receiveShadow = true;
+  worldGroup.add(ground);
+
+  // scattered grass tufts / rocks near hunter
+  for (let i=0;i<40;i++) {
+    const gx = rnd(-25, 25), gz = rnd(-40, 8);
+    if (Math.abs(gx) < 2.5 && gz < 0) continue;
+    const tuft = P(worldGroup, new THREE.ConeGeometry(rnd(.08,.2), rnd(.2,.5), 5),
+      Mat(env.snow ? 0xdfe8ee : env.tree), gx, 0.15, gz);
+  }
+  for (let i=0;i<12;i++) {
+    const r = P(worldGroup, new THREE.SphereGeometry(rnd(.2,.6), 6, 5), Mat(0x7e7a72), rnd(-40,40), 0.1, rnd(-D*1.5, 5));
+    r.scale.y = 0.55;
+  }
+
+  // trees — keep a clear shooting lane along x≈0
+  const treeCount = 70;
+  for (let i=0;i<treeCount;i++) {
+    const z = rnd(-D*2.2, 6);
+    let x = rnd(-90, 90);
+    const laneHalf = 4 + Math.abs(z)*0.06; // lane widens with distance
+    if (Math.abs(x) < laneHalf && z < -3 && z > -D - 25) x = Math.sign(x || 1) * (laneHalf + rnd(2, 30));
+    const s = rnd(1.6, 3.6) * (1 + Math.abs(z)/300);
+    const tree = (Math.random() < 0.75 || env.snow) ? pineTree(s, env) : leafTree(s*0.8, env);
+    tree.position.set(x, 0, z);
+    tree.rotation.y = rnd(0, Math.PI*2);
+    worldGroup.add(tree);
+  }
+  // dense backdrop treeline behind the animal
+  for (let i=0;i<26;i++) {
+    const tree = pineTree(rnd(3,5.5), env);
+    tree.position.set(rnd(-120,120), 0, -D - rnd(28, 90));
+    worldGroup.add(tree);
+  }
+
+  // mountains
+  const mtnMat = Mat(env.mtn, { fog:false });
+  for (let i=0;i<7;i++) {
+    const h = rnd(120, 260);
+    const m = P(worldGroup, new THREE.ConeGeometry(rnd(150, 280), h, 6), mtnMat, rnd(-700,700), h*0.42, -D - rnd(450, 800));
+    if (!env.snow) {
+      P(m, new THREE.ConeGeometry(rnd(40,70), h*0.25, 6), Mat(0xf0f4f8, { fog:false }), 0, h*0.40, 0);
+    }
+  }
+
+  // moon for night level
+  if (level.env === 'moonlit') {
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 12),
+      new THREE.MeshBasicMaterial({ color:0xe8eefc, fog:false }));
+    moon.position.set(-220, 260, -900);
+    worldGroup.add(moon);
+  }
+
+  // snow particles
+  if (snowPts) { scene.remove(snowPts); snowPts = null; }
+  if (env.snow) {
+    const n = 900, pos = new Float32Array(n*3);
+    for (let i=0;i<n;i++) { pos[i*3]=rnd(-60,60); pos[i*3+1]=rnd(0,45); pos[i*3+2]=rnd(-D-30,10); }
+    const gp = new THREE.BufferGeometry();
+    gp.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    snowPts = new THREE.Points(gp, new THREE.PointsMaterial({ color:0xffffff, size:0.35, transparent:true, opacity:0.85 }));
+    scene.add(snowPts);
+  }
+
+  // animal
+  animalGroup = makeAnimal(level.type);
+  animalGroup.position.set(rnd(-1.5, 1.5), 0, -D);
+  animalGroup.rotation.y = Math.random() < 0.5 ? 0 : Math.PI; // broadside either way
+  worldGroup.add(animalGroup);
+  // soft blob shadow under animal
+  const blob = new THREE.Mesh(new THREE.CircleGeometry(animalGroup.userData.size*0.9, 16),
+    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.30 }));
+  blob.rotation.x = -Math.PI/2; blob.position.set(animalGroup.position.x, 0.02, animalGroup.position.z);
+  worldGroup.add(blob);
+
+  scene.add(worldGroup);
+
+  if (!hunterGroup) { hunterGroup = buildHunter(); }
+  scene.add(hunterGroup);
+}
+
+// ---------- Audio ----------
+let actx = null;
+function initAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+function gunshot() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const nlen = actx.sampleRate * 0.5;
+  const buf = actx.createBuffer(1, nlen, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<nlen;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/nlen, 2.8);
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const g = actx.createGain(); g.gain.setValueAtTime(0.7, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.5);
+  const lp = actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = 2200;
+  src.connect(lp); lp.connect(g); g.connect(actx.destination); src.start(t);
+  // low thump
+  const o = actx.createOscillator(); o.type='sine';
+  o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(38, t+0.25);
+  const og = actx.createGain(); og.gain.setValueAtTime(0.8, t); og.gain.exponentialRampToValueAtTime(0.001, t+0.3);
+  o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t+0.35);
+}
+function dingSound(good) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const freqs = good ? [523, 659, 784] : [330, 262];
+  freqs.forEach((f, i) => {
+    const o = actx.createOscillator(); o.type='triangle'; o.frequency.value = f;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t + i*0.12);
+    g.gain.linearRampToValueAtTime(0.25, t + i*0.12 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + i*0.12 + 0.5);
+    o.connect(g); g.connect(actx.destination); o.start(t + i*0.12); o.stop(t + i*0.12 + 0.55);
+  });
+}
+
+// ---------- Game state ----------
+const S = { START:'start', IDLE:'idle', SCOPED:'scoped', BULLET:'bullet', RESULT:'result', OVER:'over' };
+let state = S.START;
+let levelIdx = 0;
+let totalScore = 0;
+let aimPhase = rnd(0, 100);
+let scopedTime = 0;
+
+// bullet cam data
+const B = { active:false, t:0, dur:2.5, from:new THREE.Vector3(), to:new THREE.Vector3(), dir:new THREE.Vector3(), result:null, impactDone:false, endT:0 };
+let bulletMesh = null, tracer = null, impactParts = [];
+let animalAnim = null; // {kind:'fall'|'flee', t}
+
+// DOM refs
+const $ = id => document.getElementById(id);
+const scopeEl = $('scope'), hintEl = $('hint'), cineEl = $('cine'), flashEl = $('flash');
+const resultPanel = $('resultPanel'), startScreen = $('startScreen');
+
+function setHUD() {
+  const L = LEVELS[levelIdx];
+  $('lvlName').textContent = 'Hunt ' + (levelIdx+1) + ': ' + L.name;
+  $('lvlSub').textContent = ENVS[L.env].label + ' • ' + L.dist + ' yds';
+  $('totScore').textContent = totalScore + ' pts';
+  $('lvlCount').textContent = 'Hunt ' + (levelIdx+1) + ' of ' + LEVELS.length;
+}
+
+function loadLevel(i) {
+  levelIdx = i;
+  buildWorld(LEVELS[i]);
+  animalAnim = null;
+  if (bulletMesh) { scene.remove(bulletMesh); bulletMesh = null; }
+  if (tracer) { scene.remove(tracer); tracer = null; }
+  impactParts.forEach(p => scene.remove(p)); impactParts = [];
+  setHUD();
+  state = S.IDLE;
+  hintEl.style.opacity = 1;
+  scopeEl.style.opacity = 0;
+  cineEl.style.opacity = 0;
+  resultPanel.classList.add('hidden');
+}
+
+// ---------- Aim model ----------
+function vitalWorld() {
+  return animalGroup.localToWorld(animalGroup.userData.vital.clone());
+}
+function aimAmplitude() {
+  // grows with level: ~75% on-vitals at level 1, harder later
+  const r = animalGroup.userData.vitalR;
+  return r * (1.05 + levelIdx * 0.22);
+}
+function aimOffset(t) {
+  const A = aimAmplitude();
+  const sp = 1 + levelIdx * 0.09; // sway speed grows slightly
+  const x = A * (0.62*Math.sin(t*1.1*sp + aimPhase) + 0.38*Math.sin(t*2.3*sp + aimPhase*1.7));
+  const y = A * (0.62*Math.sin(t*0.9*sp + aimPhase*2.3) + 0.38*Math.sin(t*1.9*sp + aimPhase*0.6));
+  return new THREE.Vector2(x, y);
+}
+function scopedFov() {
+  const L = LEVELS[levelIdx];
+  const span = animalGroup.userData.size * 5 + aimAmplitude()*4;
+  let fov = 2 * Math.atan(span / L.dist) * 180 / Math.PI;
+  return Math.min(26, Math.max(2.2, fov));
+}
+
+// ---------- Scoring ----------
+function judge(missDist) {
+  const r = animalGroup.userData.vitalR;
+  if (missDist < r*0.4) return { pts:100, title:'PERFECT HEART SHOT', stars:3, desc:'Dead-center on the vitals. A clean, instant, ethical harvest. Textbook marksmanship.' };
+  if (missDist < r)     return { pts:85,  title:'CLEAN LUNG SHOT',  stars:3, desc:'Right through the boiler room. A quick, ethical kill — well done.' };
+  if (missDist < r*2.0) return { pts:55,  title:'BODY SHOT',        stars:2, desc:'You brought it down, but it was off the vitals. Steady that crosshair next time.' };
+  if (missDist < r*3.2) return { pts:20,  title:'GRAZING HIT',      stars:1, desc:'Just clipped it — the animal bolted. Wait for the sway to settle before firing.' };
+  return { pts:0, title:'CLEAN MISS', stars:0, desc:'The shot sailed wide and your quarry vanished into the brush. Patience wins hunts.' };
+}
+
+// ---------- Firing ----------
+function fire() {
+  if (state !== S.SCOPED) return;
+  state = S.BULLET;
+  gunshot();
+  flashEl.style.opacity = 0.85;
+  setTimeout(() => flashEl.style.opacity = 0, 90);
+  scopeEl.style.opacity = 0;
+  cineEl.style.opacity = 1;
+  hintEl.style.opacity = 0;
+
+  const V = vitalWorld();
+  const off = aimOffset(scopedTime);
+  // hit point: vital + sway offset in the target's screen plane (x lateral world-x-ish, y vertical)
+  const hit = V.clone();
+  hit.x += off.x;
+  hit.y += off.y;
+  const missDist = off.length();
+  B.result = judge(missDist);
+  B.resultMiss = missDist;
+
+  rifleGroup.updateWorldMatrix(true, false);
+  muzzleWorld.set(0, 0.02, -0.9).applyMatrix4(rifleGroup.matrixWorld);
+
+  B.from.copy(muzzleWorld);
+  B.to.copy(hit);
+  // if a total miss, carry the bullet past the animal into the woods
+  if (B.result.pts === 0) {
+    const dir = hit.clone().sub(muzzleWorld).normalize();
+    B.to.copy(hit).add(dir.multiplyScalar(25));
+    B.to.y = Math.max(0.25, B.to.y);
+  }
+  B.dir.copy(B.to).sub(B.from).normalize();
+  B.dur = 2.1 + LEVELS[levelIdx].dist / 160;
+  B.t = 0; B.active = true; B.impactDone = false; B.endT = 0;
+
+  // bullet + tracer
+  bulletMesh = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6),
+    new THREE.MeshBasicMaterial({ color:0xffd890 }));
+  bulletMesh.scale.set(1, 1, 3.2);
+  scene.add(bulletMesh);
+  const tgeo = new THREE.BufferGeometry().setFromPoints([B.from.clone(), B.from.clone()]);
+  tracer = new THREE.Line(tgeo, new THREE.LineBasicMaterial({ color:0xffe8b0, transparent:true, opacity:0.6 }));
+  scene.add(tracer);
+}
+
+function impact() {
+  B.impactDone = true;
+  const r = B.result;
+  // particle puff
+  const col = r.pts > 0 ? 0x6a4a32 : 0x8a8a7a;
+  for (let i=0;i<8;i++) {
+    const p = new THREE.Mesh(new THREE.SphereGeometry(rnd(.03,.09), 5, 4),
+      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.9 }));
+    p.position.copy(B.to);
+    p.userData.vel = new THREE.Vector3(rnd(-1,1), rnd(.5,2), rnd(-1,1));
+    scene.add(p); impactParts.push(p);
+  }
+  if (r.pts >= 50) animalAnim = { kind:'fall', t:0 };
+  else animalAnim = { kind:'flee', t:0 };
+}
+
+function showResult() {
+  state = S.RESULT;
+  cineEl.style.opacity = 0;
+  const r = B.result;
+  totalScore += r.pts;
+  $('resTitle').textContent = r.title;
+  $('resStars').textContent = r.stars > 0 ? '★'.repeat(r.stars) + '☆'.repeat(3-r.stars) : '—';
+  $('resPts').textContent = '+' + r.pts;
+  $('resDesc').textContent = r.desc;
+  $('resTap').textContent = levelIdx < LEVELS.length-1 ? 'Tap for the next hunt' : 'Tap to see your final tally';
+  resultPanel.classList.remove('hidden');
+  setHUD();
+  dingSound(r.pts >= 55);
+}
+
+function showGameOver() {
+  state = S.OVER;
+  const max = LEVELS.length * 100;
+  let rank = 'Camp Cook';
+  const pct = totalScore / max;
+  if (pct >= 0.9) rank = 'Legendary Master Hunter';
+  else if (pct >= 0.75) rank = 'Big Woods Marksman';
+  else if (pct >= 0.55) rank = 'Seasoned Outdoorsman';
+  else if (pct >= 0.35) rank = 'Weekend Hunter';
+  $('resTitle').textContent = 'THE HUNT IS OVER';
+  $('resStars').textContent = '🏆';
+  $('resPts').textContent = totalScore + ' / ' + max;
+  $('resDesc').textContent = 'Your rank: ' + rank + '. Ten hunts, from cottontail to black bear. Tap to head back to camp and start a fresh season.';
+  $('resTap').textContent = 'Tap to play again';
+  resultPanel.classList.remove('hidden');
+}
+
+// ---------- Input (single touch / mouse) ----------
+let pressing = false, pressStartY = 0, fired = false;
+const FIRE_PUSH_PX = 55;
+
+function pressStart(y) {
+  initAudio();
+  if (state === S.START) {
+    startScreen.classList.add('hidden');
+    loadLevel(0);
+    return;
+  }
+  if (state === S.RESULT) {
+    resultPanel.classList.add('hidden');
+    if (levelIdx < LEVELS.length - 1) loadLevel(levelIdx + 1);
+    else showGameOver();
+    return;
+  }
+  if (state === S.OVER) {
+    totalScore = 0;
+    resultPanel.classList.add('hidden');
+    loadLevel(0);
+    return;
+  }
+  if (state === S.IDLE) {
+    state = S.SCOPED;
+    scopedTime = rnd(0, 10);
+    aimPhase = rnd(0, 100);
+    pressing = true; pressStartY = y; fired = false;
+    scopeEl.style.opacity = 1;
+    hintEl.style.opacity = 0;
+    $('scopeInfo').textContent = LEVELS[levelIdx].dist + ' YDS • ' + LEVELS[levelIdx].name.toUpperCase();
+  }
+}
+function pressMove(y) {
+  if (!pressing || state !== S.SCOPED || fired) return;
+  if (pressStartY - y > FIRE_PUSH_PX) { fired = true; pressing = false; fire(); }
+}
+function pressEnd() {
+  pressing = false;
+  if (state === S.SCOPED && !fired) {
+    state = S.IDLE;
+    scopeEl.style.opacity = 0;
+    hintEl.style.opacity = 1;
+  }
+}
+
+window.addEventListener('touchstart', e => { e.preventDefault(); pressStart(e.touches[0].clientY); }, { passive:false });
+window.addEventListener('touchmove',  e => { e.preventDefault(); if (e.touches.length) pressMove(e.touches[0].clientY); }, { passive:false });
+window.addEventListener('touchend',   e => { e.preventDefault(); pressEnd(); }, { passive:false });
+window.addEventListener('touchcancel',e => { e.preventDefault(); pressEnd(); }, { passive:false });
+window.addEventListener('mousedown', e => pressStart(e.clientY));
+window.addEventListener('mousemove', e => pressMove(e.clientY));
+window.addEventListener('mouseup', pressEnd);
+
+// ---------- Camera rigs ----------
+function idleCamera(t) {
+  camera.fov = 55;
+  camera.position.set(-0.9 + Math.sin(t*0.3)*0.05, 1.75 + Math.sin(t*0.45)*0.03, 4.6);
+  const look = animalGroup ? animalGroup.position.clone() : new THREE.Vector3(0,1,-30);
+  look.y += 0.5;
+  camera.lookAt(look);
+  camera.updateProjectionMatrix();
+}
+function scopedCamera() {
+  const V = vitalWorld();
+  const off = aimOffset(scopedTime);
+  const aim = V.clone(); aim.x += off.x; aim.y += off.y;
+  camera.fov = scopedFov();
+  rifleGroup.updateWorldMatrix(true, false);
+  muzzleWorld.set(0, 0.02, -0.9).applyMatrix4(rifleGroup.matrixWorld);
+  camera.position.copy(muzzleWorld);
+  camera.lookAt(aim);
+  camera.updateProjectionMatrix();
+}
+function bulletCamera(dt) {
+  B.t += dt;
+  let u = Math.min(1, B.t / B.dur);
+  u = u*u*(3-2*u); // smoothstep ease
+  const pos = B.from.clone().lerp(B.to, u);
+  bulletMesh.position.copy(pos);
+  bulletMesh.lookAt(B.to);
+  // tracer trail
+  const trailStart = B.from.clone().lerp(B.to, Math.max(0, u - 0.06));
+  tracer.geometry.setFromPoints([trailStart, pos]);
+
+  // camera chases alongside the bullet
+  const right = new THREE.Vector3().crossVectors(B.dir, new THREE.Vector3(0,1,0)).normalize();
+  const back = B.dir.clone().multiplyScalar(-3.2);
+  const side = right.multiplyScalar(1.3 - u*0.9);
+  camera.fov = 48;
+  camera.position.copy(pos).add(back).add(side).add(new THREE.Vector3(0, 0.55, 0));
+  const lookAhead = pos.clone().add(B.dir.clone().multiplyScalar(4));
+  camera.lookAt(lookAhead);
+  camera.updateProjectionMatrix();
+
+  if (u >= 1 && !B.impactDone) impact();
+  if (B.impactDone) {
+    B.endT += dt;
+    // linger on the animal reaction, then results
+    const look = animalGroup.position.clone(); look.y += animalGroup.userData.size*0.5;
+    camera.position.lerp(look.clone().add(new THREE.Vector3(4, 2.2, 5)), 0.04);
+    camera.lookAt(look);
+    if (B.endT > 2.2) { B.active = false; showResult(); }
+  }
+}
+
+// ---------- Animal animation ----------
+function animateAnimal(dt, t) {
+  if (!animalGroup) return;
+  const ud = animalGroup.userData;
+  if (!animalAnim) {
+    // idle: gentle breathing + head bob (grazing)
+    animalGroup.position.y = Math.sin(t*1.8) * 0.01;
+    if (ud.head) ud.head.position.y += Math.sin(t*0.7) * 0.0012;
+    return;
+  }
+  animalAnim.t += dt;
+  const at = animalAnim.t;
+  if (animalAnim.kind === 'fall') {
+    const k = Math.min(1, at / 0.8);
+    const e = 1 - Math.pow(1-k, 3);
+    animalGroup.rotation.x = e * Math.PI/2 * 0.92;
+    animalGroup.position.y = -e * ud.size * 0.18;
+  } else { // flee
+    const sp = ud.size * 8 + 4;
+    const fx = animalGroup.rotation.y === 0 ? 1 : -1;
+    animalGroup.position.x += fx * sp * dt;
+    animalGroup.position.z -= sp * 0.4 * dt;
+    animalGroup.position.y = Math.abs(Math.sin(at*9)) * ud.size * 0.12;
+  }
+}
+
+// ---------- Main loop ----------
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (state === S.SCOPED) scopedTime += dt;
+
+  if (snowPts) {
+    const pos = snowPts.geometry.attributes.position;
+    for (let i=0;i<pos.count;i++) {
+      let y = pos.getY(i) - dt * 2.2;
+      if (y < 0) y = 45;
+      pos.setY(i, y);
+    }
+    pos.needsUpdate = true;
+  }
+
+  impactParts.forEach(p => {
+    p.position.addScaledVector(p.userData.vel, dt);
+    p.userData.vel.y -= 3*dt;
+    p.material.opacity -= dt*0.7;
+  });
+
+  if (animalGroup) animateAnimal(dt, t);
+
+  if (state === S.IDLE || state === S.RESULT || state === S.OVER || state === S.START) idleCamera(t);
+  else if (state === S.SCOPED) scopedCamera();
+  else if (state === S.BULLET && B.active) bulletCamera(dt);
+
+  renderer.render(scene, camera);
+}
+
+// boot: build first world behind the start screen so it looks alive
+buildWorld(LEVELS[0]);
+setHUD();
+tick();
+</script>
+</body>
+</html>
