@@ -61,6 +61,9 @@
   #vitalsWrap svg { width:min(76vw, 380px); height:auto; filter:drop-shadow(0 4px 12px rgba(0,0,0,.55)); }
   #verBadge { position:fixed; bottom:10px; left:14px; z-index:50; color:#fff; font-size:13px;
     opacity:.6; letter-spacing:1px; text-shadow:0 1px 4px #000; pointer-events:none; }
+  .wbtn { margin:10px 0; font-size:22px; padding:18px 40px; min-width:320px; border:2px solid rgba(255,255,255,.85);
+    border-radius:50px; background:rgba(40,70,40,.7); cursor:pointer; }
+  .wbtn small { display:block; font-size:14px; opacity:.8; margin-top:3px; }
 </style>
 </head>
 <body>
@@ -100,7 +103,14 @@
   <div class="tap">Tap to start hunting</div>
 </div>
 
-<div id="verBadge">v1.17</div>
+<div class="panel hidden" id="weaponScreen">
+  <h2>Choose your weapon</h2>
+  <div class="wbtn" data-w="rifle">&#127919; Rifle<small>Flat-shooting and true at any range</small></div>
+  <div class="wbtn" data-w="bow">&#127993; Bow<small>Silent, but the arrow arcs in flight</small></div>
+  <div class="wbtn" data-w="shotgun">&#128165; Shotgun<small>Devastating up close, spreads wide at range</small></div>
+</div>
+
+<div id="verBadge">v1.18</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -164,6 +174,14 @@ const ENVS = {
   moonlit:{ sky:0x16243e, fog:0x1c2a44, ground:0x1e3024, tree:0x14281c, trunk:0x242020,
     sunCol:0xaac4ee, sunI:0.55, sunPos:[-60,80,30], amb:0.3, hemi:0.3, mtn:0x2a3a52, snow:false, label:'Full moon • still night' }
 };
+
+// ---------- Weapons ----------
+const WEAPONS = {
+  rifle:   { label:'Rifle',   sway:1.0,  durBase:2.1, durDiv:160, arc:0,     scatter:false },
+  bow:     { label:'Bow',     sway:1.28, durBase:2.7, durDiv:110, arc:0.03,  scatter:false },
+  shotgun: { label:'Shotgun', sway:1.05, durBase:2.1, durDiv:160, arc:0.004, scatter:true }
+};
+let weapon = 'rifle';
 
 // ---------- Levels ----------
 const LEVELS = [
@@ -425,14 +443,37 @@ function buildHunter() {
   headGrp.add(jointTip);
   joint.visible = jointTip.visible = false;
 
-  // --- rifle (aimed downrange = -z) ---
+  // --- weapons (container aimed downrange = -z; one model visible at a time) ---
   rifleGroup = new THREE.Group();
   const wood = Mat(0x5a3a22, { roughness:.6 });
-  P(rifleGroup, new THREE.BoxGeometry(0.07, 0.10, 0.45), wood, 0, -0.01, 0.18); // stock
-  P(rifleGroup, new THREE.CylinderGeometry(0.018, 0.018, 0.85, 8), dark, 0, 0.02, -0.45, Math.PI/2, 0, 0); // barrel
-  P(rifleGroup, new THREE.CylinderGeometry(0.030, 0.030, 0.22, 8), dark, 0, 0.085, -0.12, Math.PI/2, 0, 0); // scope tube
-  P(rifleGroup, new THREE.CylinderGeometry(0.038, 0.038, 0.05, 8), metal, 0, 0.085, -0.24, Math.PI/2, 0, 0); // objective
-  P(rifleGroup, new THREE.BoxGeometry(0.02, 0.05, 0.02), dark, 0, 0.045, -0.12);
+  // rifle
+  const wRifle = new THREE.Group();
+  P(wRifle, new THREE.BoxGeometry(0.07, 0.10, 0.45), wood, 0, -0.01, 0.18); // stock
+  P(wRifle, new THREE.CylinderGeometry(0.018, 0.018, 0.85, 8), dark, 0, 0.02, -0.45, Math.PI/2, 0, 0); // barrel
+  P(wRifle, new THREE.CylinderGeometry(0.030, 0.030, 0.22, 8), dark, 0, 0.085, -0.12, Math.PI/2, 0, 0); // scope tube
+  P(wRifle, new THREE.CylinderGeometry(0.038, 0.038, 0.05, 8), metal, 0, 0.085, -0.24, Math.PI/2, 0, 0); // objective
+  P(wRifle, new THREE.BoxGeometry(0.02, 0.05, 0.02), dark, 0, 0.045, -0.12);
+  rifleGroup.add(wRifle);
+  // shotgun: side-by-side double barrel
+  const wShot = new THREE.Group();
+  P(wShot, new THREE.BoxGeometry(0.08, 0.11, 0.42), wood, 0, -0.015, 0.20); // stock
+  P(wShot, new THREE.CylinderGeometry(0.024, 0.024, 0.72, 8), dark, -0.024, 0.03, -0.36, Math.PI/2, 0, 0);
+  P(wShot, new THREE.CylinderGeometry(0.024, 0.024, 0.72, 8), dark, 0.024, 0.03, -0.36, Math.PI/2, 0, 0);
+  P(wShot, new THREE.BoxGeometry(0.07, 0.05, 0.24), wood, 0, -0.02, -0.22); // forend
+  P(wShot, new THREE.SphereGeometry(0.012, 6, 5), metal, 0, 0.055, -0.70); // bead sight
+  wShot.visible = false;
+  rifleGroup.add(wShot);
+  // compound-ish bow, held vertical, arrow nocked
+  const wBow = new THREE.Group();
+  const limbs = P(wBow, new THREE.TorusGeometry(0.36, 0.016, 6, 16, Math.PI), wood, 0, 0, -0.05, 0, -Math.PI/2, Math.PI/2);
+  P(wBow, new THREE.CylinderGeometry(0.004, 0.004, 0.72, 4), Mat(0xe8e8e0), 0, 0, -0.05); // string
+  P(wBow, new THREE.BoxGeometry(0.030, 0.14, 0.05), dark, 0, 0, -0.40); // riser grip
+  const nArrow = new THREE.Group(); // nocked arrow
+  P(nArrow, new THREE.CylinderGeometry(0.007, 0.007, 0.62, 5), Mat(0x8a6a3a), 0, 0, -0.30, Math.PI/2, 0, 0);
+  P(nArrow, new THREE.ConeGeometry(0.016, 0.05, 5), Mat(0x9aa0a8), 0, 0, -0.62, -Math.PI/2, 0, 0);
+  wBow.add(nArrow);
+  wBow.visible = false;
+  rifleGroup.add(wBow);
   rifleGroup.position.set(0.12, 1.06, -0.28);
   rifleGroup.rotation.y = -0.10;
   g.add(rifleGroup);
@@ -449,6 +490,7 @@ function buildHunter() {
   P(armFar, handG, skin, 0.07 + dirF.x*0.15, -0.08 + dirF.y*0.15, dirF.z*0.15);
 
   hunterRefs = { armNear, armFar, headGrp, joint, jointTip, rifle: rifleGroup,
+    weapons: { rifle: wRifle, shotgun: wShot, bow: wBow },
     rifle0: { pos: rifleGroup.position.clone(), rot: rifleGroup.rotation.clone() } };
 
   g.position.set(1.05, 0, 2.4);
@@ -601,22 +643,48 @@ function initAudio() {
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
   if (actx && actx.state === 'suspended') actx.resume();
 }
+function noiseBurst(st, dur, lpFreq, vol, decayPow) {
+  const t = actx.currentTime + st;
+  const nlen = Math.floor(actx.sampleRate * dur);
+  const buf = actx.createBuffer(1, nlen, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<nlen;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/nlen, decayPow || 2.8);
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const lp = actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = lpFreq;
+  const g = actx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(lp); lp.connect(g); g.connect(actx.destination); src.start(t);
+}
+function thumpSound(st, f0, f1, dur, vol) {
+  const t = actx.currentTime + st;
+  const o = actx.createOscillator(); o.type='sine';
+  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur*0.8);
+  const og = actx.createGain(); og.gain.setValueAtTime(vol, t); og.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+}
 function gunshot() {
   if (!actx) return;
   const t = actx.currentTime;
-  const nlen = actx.sampleRate * 0.5;
-  const buf = actx.createBuffer(1, nlen, actx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i=0;i<nlen;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/nlen, 2.8);
-  const src = actx.createBufferSource(); src.buffer = buf;
-  const g = actx.createGain(); g.gain.setValueAtTime(0.7, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.5);
-  const lp = actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = 2200;
-  src.connect(lp); lp.connect(g); g.connect(actx.destination); src.start(t);
-  // low thump
-  const o = actx.createOscillator(); o.type='sine';
-  o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(38, t+0.25);
-  const og = actx.createGain(); og.gain.setValueAtTime(0.8, t); og.gain.exponentialRampToValueAtTime(0.001, t+0.3);
-  o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t+0.35);
+  if (weapon === 'bow') {
+    // string twang + release slap — nearly silent hunting
+    const o = actx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(240, t);
+    o.frequency.exponentialRampToValueAtTime(150, t + 0.15);
+    const g = actx.createGain(); g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + 0.25);
+    noiseBurst(0, 0.05, 3200, 0.25, 1.5); // limb slap
+    return;
+  }
+  if (weapon === 'shotgun') {
+    // deep heavy boom with a long tail, then the pump racks a fresh shell
+    noiseBurst(0, 0.7, 950, 0.95, 2.2);
+    thumpSound(0, 95, 24, 0.45, 1.0);
+    noiseBurst(0.85, 0.05, 2200, 0.30, 1.2); // shk-
+    noiseBurst(1.02, 0.05, 2200, 0.30, 1.2); // -shk
+    return;
+  }
+  // rifle: sharp supersonic crack + chest thump
+  noiseBurst(0, 0.5, 2200, 0.7, 2.8);
+  thumpSound(0, 120, 38, 0.3, 0.8);
 }
 // --- ambient wind (looped noise, gusting) ---
 let windStarted = false;
@@ -682,8 +750,8 @@ function heartThump() {
     o.connect(g); g.connect(actx.destination); o.start(t+dt); o.stop(t+dt+0.15);
   });
 }
-// --- slow-mo bullet whoosh ---
-function whoosh(dur) {
+// --- slow-mo projectile whoosh (light = arrow flutter) ---
+function whoosh(dur, light) {
   if (!actx) return;
   const t = actx.currentTime;
   const len = Math.floor(actx.sampleRate * dur);
@@ -691,13 +759,18 @@ function whoosh(dur) {
   const d = buf.getChannelData(0);
   for (let i=0;i<len;i++) d[i] = Math.random()*2-1;
   const src = actx.createBufferSource(); src.buffer = buf;
-  const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value = 1.4;
-  bp.frequency.setValueAtTime(260, t);
-  bp.frequency.exponentialRampToValueAtTime(1300, t + dur*0.7);
-  bp.frequency.exponentialRampToValueAtTime(200, t + dur);
+  const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value = light ? 3.0 : 1.4;
+  bp.frequency.setValueAtTime(light ? 800 : 260, t);
+  bp.frequency.exponentialRampToValueAtTime(light ? 1500 : 1300, t + dur*0.7);
+  bp.frequency.exponentialRampToValueAtTime(light ? 600 : 200, t + dur);
+  if (light) { // fletching flutter
+    const lfo = actx.createOscillator(); lfo.frequency.value = 14;
+    const lg = actx.createGain(); lg.gain.value = 250;
+    lfo.connect(lg); lg.connect(bp.frequency); lfo.start(t); lfo.stop(t + dur);
+  }
   const g = actx.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.16, t + dur*0.3);
+  g.gain.exponentialRampToValueAtTime(light ? 0.07 : 0.16, t + dur*0.3);
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   src.connect(bp); bp.connect(g); g.connect(actx.destination); src.start(t);
 }
@@ -733,7 +806,7 @@ function dingSound(good) {
 }
 
 // ---------- Game state ----------
-const S = { START:'start', INTRO:'intro', IDLE:'idle', SCOPED:'scoped', BULLET:'bullet', CELEB:'celeb', RESULT:'result', OVER:'over' };
+const S = { START:'start', WEAPON:'weapon', INTRO:'intro', IDLE:'idle', SCOPED:'scoped', BULLET:'bullet', CELEB:'celeb', RESULT:'result', OVER:'over' };
 let state = S.START;
 let introT = 0;
 const INTRO_DUR = 4.2;
@@ -760,7 +833,7 @@ const resultPanel = $('resultPanel'), startScreen = $('startScreen');
 function setHUD() {
   const L = LEVELS[levelIdx];
   $('lvlName').textContent = 'Hunt ' + (levelIdx+1) + ': ' + L.name;
-  $('lvlSub').textContent = ENVS[L.env].label + ' • ' + L.dist + ' yds';
+  $('lvlSub').textContent = ENVS[L.env].label + ' • ' + L.dist + ' yds • ' + WEAPONS[weapon].label;
   $('totScore').textContent = totalScore + ' pts';
   $('lvlCount').textContent = 'Hunt ' + (levelIdx+1) + ' of ' + LEVELS.length;
   $('bestScore').textContent = sessionBest > 0 ? 'Beat: ' + sessionBest + ' pts' : '';
@@ -788,9 +861,9 @@ function vitalWorld() {
   return animalGroup.localToWorld(animalGroup.userData.vital.clone());
 }
 function aimAmplitude() {
-  // grows with level: mostly on-vitals at level 1, harder later
+  // grows with level: mostly on-vitals at level 1, harder later; bow is hardest to hold steady
   const r = animalGroup.userData.vitalR;
-  return r * (1.22 + levelIdx * 0.26);
+  return r * (1.22 + levelIdx * 0.26) * WEAPONS[weapon].sway;
 }
 function aimOffset(t) {
   const A = aimAmplitude();
@@ -821,7 +894,7 @@ function fire() {
   if (state !== S.SCOPED) return;
   state = S.BULLET;
   gunshot();
-  setTimeout(() => whoosh(B.dur * 0.9), 120);
+  setTimeout(() => whoosh(B.dur * 0.9, weapon === 'bow'), 120);
   flashEl.style.opacity = 0.85;
   setTimeout(() => flashEl.style.opacity = 0, 90);
   scopeEl.style.opacity = 0;
@@ -830,6 +903,13 @@ function fire() {
 
   const V = vitalWorld();
   const off = aimOffset(scopedTime);
+  // shotgun pattern scatters — forgiving up close, rough at distance
+  if (WEAPONS[weapon].scatter) {
+    const sr = animalGroup.userData.vitalR * 0.55 * (LEVELS[levelIdx].dist / 100) * Math.random();
+    const sa = rnd(0, Math.PI*2);
+    off.x += Math.cos(sa) * sr;
+    off.y += Math.sin(sa) * sr;
+  }
   // hit point: vital + sway offset in the target's screen plane (x lateral world-x-ish, y vertical)
   const hit = V.clone();
   hit.x += off.x;
@@ -854,14 +934,38 @@ function fire() {
     B.to.y = Math.max(0.25, B.to.y);
   }
   B.dir.copy(B.to).sub(B.from).normalize();
-  B.dur = 2.1 + LEVELS[levelIdx].dist / 160;
+  const WP = WEAPONS[weapon];
+  B.dur = WP.durBase + LEVELS[levelIdx].dist / WP.durDiv;
+  B.arcH = LEVELS[levelIdx].dist * WP.arc; // arrow flies an arc
   B.t = 0; B.active = true; B.impactDone = false; B.endT = 0;
 
-  // bullet + tracer
-  bulletMesh = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6),
-    new THREE.MeshBasicMaterial({ color:0xffd890 }));
-  bulletMesh.scale.set(1, 1, 3.2);
+  // projectile
+  if (weapon === 'bow') {
+    bulletMesh = new THREE.Group();
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.6, 6), new THREE.MeshBasicMaterial({ color:0x8a6a3a }));
+    sh.rotation.x = Math.PI/2; bulletMesh.add(sh);
+    const tp = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.06, 6), new THREE.MeshBasicMaterial({ color:0x9aa0a8 }));
+    tp.rotation.x = Math.PI/2; tp.position.z = 0.33; bulletMesh.add(tp);
+    const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.05, 0.07), new THREE.MeshBasicMaterial({ color:0xd84a3a }));
+    f1.position.z = -0.27; bulletMesh.add(f1);
+    const f2 = f1.clone(); f2.rotation.z = Math.PI/2; bulletMesh.add(f2);
+  } else {
+    bulletMesh = new THREE.Mesh(new THREE.SphereGeometry(weapon === 'shotgun' ? 0.045 : 0.035, 8, 6),
+      new THREE.MeshBasicMaterial({ color:0xffd890 }));
+    bulletMesh.scale.set(1, 1, 3.2);
+  }
   scene.add(bulletMesh);
+  // shotgun pellet cloud (visual)
+  B.pellets = null;
+  if (weapon === 'shotgun') {
+    B.pellets = [];
+    for (let i=0;i<5;i++) {
+      const pm = new THREE.Mesh(new THREE.SphereGeometry(0.022, 5, 4),
+        new THREE.MeshBasicMaterial({ color:0xe8d8a0, transparent:true, opacity:1 }));
+      pm.userData.dx = rnd(-1,1); pm.userData.dy = rnd(-1,1);
+      scene.add(pm); B.pellets.push(pm);
+    }
+  }
   const tgeo = new THREE.BufferGeometry().setFromPoints([B.from.clone(), B.from.clone()]);
   tracer = new THREE.Line(tgeo, new THREE.LineBasicMaterial({ color:0xffe8b0, transparent:true, opacity:0.6 }));
   scene.add(tracer);
@@ -870,6 +974,14 @@ function fire() {
 function impact() {
   B.impactDone = true;
   impactThud();
+  // pellets scatter on impact and fade with the debris
+  if (B.pellets) {
+    B.pellets.forEach(pm => {
+      pm.userData.vel = new THREE.Vector3(rnd(-1,1), rnd(0.2,1.6), rnd(-1,1));
+      impactParts.push(pm);
+    });
+    B.pellets = null;
+  }
   const r = B.result;
   const isHit = r.pts > 0;
   // blood spray on a hit, dirt puff on a miss
@@ -1347,11 +1459,11 @@ const FIRE_PUSH_PX = 55;
 function pressStart(y) {
   initAudio();
   startAmbient();
+  if (state === S.WEAPON) return;      // weapon buttons handle their own taps
   if (state === S.START) {
     startScreen.classList.add('hidden');
-    loadLevel(0);
-    state = S.INTRO; introT = 0;       // meet the hunter: 360 sweep
-    hintEl.style.opacity = 0;
+    $('weaponScreen').classList.remove('hidden');
+    state = S.WEAPON;
     return;
   }
   if (state === S.INTRO) {             // tap skips the intro
@@ -1372,9 +1484,8 @@ function pressStart(y) {
   if (state === S.OVER) {
     totalScore = 0;
     resultPanel.classList.add('hidden');
-    loadLevel(0);
-    state = S.INTRO; introT = 0;
-    hintEl.style.opacity = 0;
+    $('weaponScreen').classList.remove('hidden'); // pick a weapon for the new season
+    state = S.WEAPON;
     return;
   }
   if (state === S.IDLE) {
@@ -1384,7 +1495,7 @@ function pressStart(y) {
     pressing = true; pressStartY = y; fired = false;
     scopeEl.style.opacity = 1;
     hintEl.style.opacity = 0;
-    $('scopeInfo').textContent = LEVELS[levelIdx].dist + ' YDS • ' + LEVELS[levelIdx].name.toUpperCase();
+    $('scopeInfo').textContent = LEVELS[levelIdx].dist + ' YDS • ' + WEAPONS[weapon].label.toUpperCase() + ' • ' + LEVELS[levelIdx].name.toUpperCase();
   }
 }
 function pressMove(y) {
@@ -1404,6 +1515,26 @@ window.addEventListener('touchstart', e => { e.preventDefault(); pressStart(e.to
 window.addEventListener('touchmove',  e => { e.preventDefault(); if (e.touches.length) pressMove(e.touches[0].clientY); }, { passive:false });
 window.addEventListener('touchend',   e => { e.preventDefault(); pressEnd(); }, { passive:false });
 window.addEventListener('touchcancel',e => { e.preventDefault(); pressEnd(); }, { passive:false });
+// weapon selection buttons (single tap)
+function equipWeapon() {
+  if (!hunterRefs) return;
+  Object.keys(hunterRefs.weapons).forEach(k => { hunterRefs.weapons[k].visible = (k === weapon); });
+}
+document.querySelectorAll('.wbtn').forEach(b => {
+  const pick = e => {
+    e.stopPropagation(); e.preventDefault();
+    if (state !== S.WEAPON) return;
+    initAudio(); startAmbient();
+    weapon = b.dataset.w;
+    equipWeapon();
+    $('weaponScreen').classList.add('hidden');
+    loadLevel(0);
+    state = S.INTRO; introT = 0;   // meet the hunter: 360 sweep
+    hintEl.style.opacity = 0;
+  };
+  b.addEventListener('touchstart', pick, { passive:false });
+  b.addEventListener('mousedown', pick);
+});
 window.addEventListener('mousedown', e => pressStart(e.clientY));
 window.addEventListener('mousemove', e => pressMove(e.clientY));
 window.addEventListener('mouseup', pressEnd);
@@ -1449,12 +1580,28 @@ function bulletCamera(dt) {
   B.t += dt;
   let u = Math.min(1, B.t / B.dur);
   u = u*u*(3-2*u); // smoothstep ease
+  const arcY = u2 => (B.arcH || 0) * 4 * u2 * (1 - u2);
   const pos = B.from.clone().lerp(B.to, u);
+  pos.y += arcY(u);
   bulletMesh.position.copy(pos);
-  bulletMesh.lookAt(B.to);
+  // orient along the (possibly arced) flight path
+  const uN = Math.min(1, u + 0.02);
+  const posN = B.from.clone().lerp(B.to, uN); posN.y += arcY(uN);
+  bulletMesh.lookAt(posN.distanceToSquared(pos) > 1e-9 ? posN : B.to);
   // tracer trail
-  const trailStart = B.from.clone().lerp(B.to, Math.max(0, u - 0.06));
+  const uT = Math.max(0, u - 0.06);
+  const trailStart = B.from.clone().lerp(B.to, uT); trailStart.y += arcY(uT);
   tracer.geometry.setFromPoints([trailStart, pos]);
+  // pellet cloud spreads as it flies
+  if (B.pellets) {
+    const pr = new THREE.Vector3().crossVectors(B.dir, new THREE.Vector3(0,1,0)).normalize();
+    const spreadW = LEVELS[levelIdx].dist * 0.018;
+    B.pellets.forEach(pm => {
+      pm.position.copy(pos)
+        .addScaledVector(pr, pm.userData.dx * u * spreadW)
+        .add(new THREE.Vector3(0, pm.userData.dy * u * spreadW, 0));
+    });
+  }
 
   // camera chases alongside the bullet
   const right = new THREE.Vector3().crossVectors(B.dir, new THREE.Vector3(0,1,0)).normalize();
@@ -1643,7 +1790,7 @@ function tick() {
     if (animalBlob) animalBlob.position.set(animalGroup.position.x, 0.02, animalGroup.position.z);
   }
 
-  if (state === S.IDLE || state === S.RESULT || state === S.OVER || state === S.START) idleCamera(t);
+  if (state === S.IDLE || state === S.RESULT || state === S.OVER || state === S.START || state === S.WEAPON) idleCamera(t);
   else if (state === S.INTRO) {
     introT += dt;
     introCamera();
