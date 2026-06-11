@@ -14,7 +14,7 @@
   .overlay { position:fixed; inset:0; pointer-events:none; }
 
   /* HUD */
-  #hud { top:0; left:0; right:0; padding:14px 20px; display:flex; justify-content:space-between; align-items:flex-start; color:#fff; text-shadow:0 2px 6px rgba(0,0,0,.8); }
+  #hud { top:0; left:0; right:0; padding:14px 20px; display:flex; justify-content:space-between; align-items:flex-start; color:#fff; text-shadow:0 2px 6px rgba(0,0,0,.8); z-index:30; }
   #hud .lvl { font-size:20px; font-weight:bold; letter-spacing:1px; }
   #hud .sub { font-size:15px; opacity:.85; margin-top:3px; }
   #hud .score { font-size:22px; font-weight:bold; text-align:right; }
@@ -147,7 +147,7 @@
   <div class="wopt" data-w="shotgun" title="Shotgun">&#128165;</div>
 </div>
 
-<div id="verBadge">v1.26</div>
+<div id="verBadge">v1.27</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -209,7 +209,19 @@ const ENVS = {
   pinkDawn:{ sky:0xf0a8b8, fog:0xeec0c8, ground:0x5a6840, tree:0x3a5530, trunk:0x4f3a28,
     sunCol:0xffc8d0, sunI:0.95, sunPos:[110,25,-50], amb:0.5, hemi:0.45, mtn:0xb88a98, snow:false, label:'First light • dawn mist' },
   moonlit:{ sky:0x16243e, fog:0x1c2a44, ground:0x1e3024, tree:0x14281c, trunk:0x242020,
-    sunCol:0xaac4ee, sunI:0.55, sunPos:[-60,80,30], amb:0.3, hemi:0.3, mtn:0x2a3a52, snow:false, label:'Full moon • still night' }
+    sunCol:0xaac4ee, sunI:0.55, sunPos:[-60,80,30], amb:0.3, hemi:0.3, mtn:0x2a3a52, snow:false, label:'Full moon • still night' },
+  alpine:{ sky:0xa8c8e0, fog:0xc8d4dc, ground:0x8a9078, tree:0x3a5a40, trunk:0x4a4438,
+    sunCol:0xf0f4ff, sunI:1.1, sunPos:[60,80,20], amb:0.55, hemi:0.55, mtn:0xb8c4cc, snow:false, label:'High crags • thin air' },
+  tundra:{ sky:0xb8c8d8, fog:0xc8d0d8, ground:0x9aa284, tree:0x4a5a40, trunk:0x4a4438,
+    sunCol:0xe8ecf0, sunI:0.95, sunPos:[40,50,60], amb:0.6, hemi:0.55, mtn:0x8a98a8, snow:false, label:'Open tundra • cold wind' },
+  prairie:{ sky:0x9ecbe8, fog:0xe0d8b8, ground:0xb8a45a, tree:0x6a7a3a, trunk:0x5d4a30,
+    sunCol:0xfff2d0, sunI:1.2, sunPos:[50,85,30], amb:0.55, hemi:0.5, mtn:0x9d8a78, snow:false, label:'Golden prairie • big sky' },
+  savanna:{ sky:0xa8d4e8, fog:0xe8dcb0, ground:0xc4a85a, tree:0x6a7a3a, trunk:0x6a5638,
+    sunCol:0xfff0c8, sunI:1.3, sunPos:[40,90,20], amb:0.5, hemi:0.5, mtn:0xb09a78, snow:false, acacia:true, label:'African savanna • heat shimmer' },
+  savannaSunset:{ sky:0xf0884a, fog:0xe8a070, ground:0xa8884a, tree:0x5a6630, trunk:0x5a4830,
+    sunCol:0xff9a50, sunI:1.0, sunPos:[-110,20,30], amb:0.45, hemi:0.4, mtn:0x8a5a48, snow:false, acacia:true, label:'Savanna sunset • dust in the air' },
+  savannaDusk:{ sky:0x6a5a7a, fog:0x7a6a88, ground:0x6a5e40, tree:0x3a4628, trunk:0x4a3c2c,
+    sunCol:0xc8a8d8, sunI:0.7, sunPos:[-80,30,40], amb:0.45, hemi:0.4, mtn:0x5a4a68, snow:false, acacia:true, label:'Last light on the savanna' }
 };
 
 // ---------- Weapons ----------
@@ -220,25 +232,42 @@ const WEAPONS = {
 };
 let weapon = 'rifle';
 
-// ---------- Levels ----------
+// ---------- Levels: the North American big game list, then the safari ----------
 const LEVELS = [
-  { name:'Cottontail Rabbit', type:'rabbit',  dist:30,  env:'springMeadow' },
-  { name:'Ring-necked Pheasant', type:'pheasant', dist:45, env:'goldenMorning' },
-  { name:'Wild Turkey', type:'turkey', dist:60,  env:'autumnWood' },
-  { name:'Red Fox', type:'fox', dist:80,  env:'foggyHollow' },
-  { name:'Coyote', type:'coyote', dist:105, env:'duskRidge' },
-  { name:'Whitetail Deer', type:'deer', dist:135, env:'deepForest', stand:true },
-  { name:'Wild Boar', type:'boar', dist:165, env:'stormPines' },
-  { name:'Rocky Mountain Elk', type:'elk', dist:205, env:'snowMountain', stand:true },
-  { name:'Bull Moose', type:'moose', dist:255, env:'pinkDawn' },
-  { name:'Black Bear', type:'bear', dist:310, env:'moonlit', stand:true }
+  { name:'Cottontail Rabbit', type:'rabbit', dist:30, env:'springMeadow' },
+  { name:'Ring-necked Pheasant', type:'pheasant', dist:42, env:'goldenMorning', count:2 },
+  { name:'Wild Turkey', type:'turkey', dist:55, env:'autumnWood', count:3 },
+  { name:'Red Fox', type:'fox', dist:70, env:'foggyHollow' },
+  { name:'Coyote', type:'coyote', dist:85, env:'duskRidge', count:2 },
+  { name:'Pronghorn Antelope', type:'pronghorn', dist:100, env:'prairie', count:3 },
+  { name:'Whitetail Deer', type:'deer', dist:115, env:'deepForest', stand:true, count:2 },
+  { name:'Mule Deer', type:'muledeer', dist:130, env:'autumnWood' },
+  { name:'Wild Boar', type:'boar', dist:145, env:'stormPines', count:3 },
+  { name:'Gray Wolf', type:'wolf', dist:160, env:'snowMountain', count:2 },
+  { name:'Mountain Goat', type:'mountaingoat', dist:172, env:'alpine' },
+  { name:'Bighorn Sheep', type:'bighorn', dist:185, env:'alpine', count:2 },
+  { name:'Caribou', type:'caribou', dist:198, env:'tundra', count:4 },
+  { name:'Rocky Mountain Elk', type:'elk', dist:212, env:'snowMountain', stand:true },
+  { name:'Bull Moose', type:'moose', dist:226, env:'pinkDawn' },
+  { name:'Black Bear', type:'bear', dist:240, env:'deepForest', stand:true },
+  { name:'Plains Bison', type:'bison', dist:255, env:'prairie', count:4 },
+  { name:'Grizzly Bear', type:'grizzly', dist:270, env:'alpine', stand:true },
+  { name:'Warthog', type:'warthog', dist:285, env:'savanna', count:2 },
+  { name:"Thomson's Gazelle", type:'gazelle', dist:300, env:'savanna', count:4 },
+  { name:'Plains Zebra', type:'zebra', dist:315, env:'savanna', count:3 },
+  { name:'Blue Wildebeest', type:'wildebeest', dist:330, env:'savannaSunset', count:4 },
+  { name:'Greater Kudu', type:'kudu', dist:350, env:'savanna' },
+  { name:'African Lion', type:'lion', dist:375, env:'savannaSunset' },
+  { name:'Cape Buffalo', type:'capebuffalo', dist:400, env:'savannaDusk', count:2 }
 ];
 
 // ---------- Animal builders ----------
 function quadruped(o) {
   // o: {len,h,w, legH,legR, neckLen,neckTilt, headR, earLen, tailLen, color, belly, antlers, palmAntlers, tusks, snout, bushyTail, sit}
   const g = new THREE.Group();
-  const c = Mat(o.color);
+  const c = o.map
+    ? new THREE.MeshStandardMaterial({ map:o.map, roughness:.92, flatShading:true })
+    : Mat(o.color);
   const body = P(g, new THREE.SphereGeometry(1, 10, 8), c, 0, o.legH + o.h*0.5, 0);
   body.scale.set(o.len*0.5, o.h*0.5, o.w*0.5);
   // belly patch
@@ -323,6 +352,24 @@ function quadruped(o) {
     const tm = Mat(0xeae2cc);
     for (const s of [-1,1]) P(g, new THREE.ConeGeometry(0.03, 0.16, 5), tm, hx + o.headR*1.1, hy - o.headR*0.4, s*o.headR*0.5, 2.6, 0, 0);
   }
+  // horns
+  const hornMat = Mat(0x3a3632);
+  if (o.hornSpike) { // pronghorn, goat, gazelle: straight-ish spikes swept back
+    for (const s of [-1,1]) P(g, new THREE.ConeGeometry(o.headR*0.16, o.headR*o.hornSpike, 5), hornMat, hx - o.headR*0.15, hy + o.headR*0.95, s*o.headR*0.4, s*0.18, 0, 0.35);
+  }
+  if (o.hornCurl) { // bighorn / bison / wildebeest (1) and cape buffalo (2: wide with boss)
+    const r = o.headR * (o.hornCurl === 2 ? 1.15 : 0.8);
+    for (const s of [-1,1])
+      P(g, new THREE.TorusGeometry(r, o.headR*0.16, 6, 10, Math.PI*1.35), hornMat, hx - o.headR*0.1, hy + o.headR*0.55, s*o.headR*0.75, 0, s*Math.PI/2, Math.PI*0.2);
+    if (o.hornCurl === 2) P(g, new THREE.BoxGeometry(o.headR*0.7, o.headR*0.45, o.headR*1.6), hornMat, hx - o.headR*0.05, hy + o.headR*0.85, 0); // boss
+  }
+  if (o.hornSpiral) { // kudu: long spiraled horns (approximated)
+    for (const s of [-1,1]) P(g, new THREE.ConeGeometry(o.headR*0.14, o.headR*4.2, 5), hornMat, hx - o.headR*0.4, hy + o.headR*1.8, s*o.headR*0.5, s*0.25, 0, 0.5);
+  }
+  if (o.maneBall) { // lion
+    const mn = P(g, new THREE.SphereGeometry(o.headR*1.9, 9, 7), Mat(o.maneBall), hx - o.headR*0.55, hy, 0);
+    mn.scale.set(1, 1, 0.92);
+  }
   const shoulderH = o.legH + o.h*0.62;
   g.userData = {
     vital: new THREE.Vector3(o.len*0.18, shoulderH, 0),  // heart/lungs behind front shoulder
@@ -397,6 +444,24 @@ function rabbitModel() {
   return g;
 }
 
+let stripeTex = null;
+function makeStripeTex() {
+  if (stripeTex) return stripeTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#e8e8e8'; ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = '#1c1c1c'; ctx.lineWidth = 6;
+  for (let x = 4; x < 128; x += 14) {
+    ctx.beginPath();
+    ctx.moveTo(x, -4);
+    ctx.quadraticCurveTo(x + rnd(-8, 8), 64, x + rnd(-6, 6), 132);
+    ctx.stroke();
+  }
+  stripeTex = new THREE.CanvasTexture(cv);
+  stripeTex.wrapS = stripeTex.wrapT = THREE.RepeatWrapping;
+  return stripeTex;
+}
+
 function makeAnimal(type) {
   switch (type) {
     case 'rabbit': return rabbitModel();
@@ -409,6 +474,23 @@ function makeAnimal(type) {
     case 'elk': return quadruped({ len:2.2, h:1.05, w:0.65, legH:1.05, legR:0.065, neckLen:0.8, neckTilt:0.5, headR:0.18, earLen:0.18, tailLen:0.15, antlers:1.8, mane:0x4a3424, rump:0xd8c8a0, color:0x7d6243 });
     case 'moose': return quadruped({ len:2.6, h:1.25, w:0.8, legH:1.25, legR:0.08, neckLen:0.7, neckTilt:0.7, headR:0.24, earLen:0.2, tailLen:0.1, palmAntlers:true, snout:true, dewlap:true, color:0x4e3a28 });
     case 'bear': return quadruped({ len:1.9, h:1.05, w:0.85, legH:0.55, legR:0.10, neckLen:0.4, neckTilt:0.9, headR:0.22, earLen:0.10, tailLen:0, hump:true, snout:true, color:0x2e2620 });
+    // --- North American big game ---
+    case 'pronghorn': return quadruped({ len:1.25, h:0.6, w:0.38, legH:0.65, legR:0.035, neckLen:0.45, neckTilt:0.5, headR:0.12, earLen:0.15, tailLen:0.1, hornSpike:2.2, color:0xc49058, belly:0xf0e8d8, chest:0xf0e8d8 });
+    case 'muledeer': return quadruped({ len:1.55, h:0.72, w:0.46, legH:0.78, legR:0.045, neckLen:0.55, neckTilt:0.55, headR:0.14, earLen:0.24, tailLen:0.2, antlers:1.15, belly:0xe2dcc8, rump:0xe8e2d2, color:0x9a8054 });
+    case 'wolf': return quadruped({ len:1.25, h:0.55, w:0.38, legH:0.52, legR:0.042, neckLen:0.32, neckTilt:0.7, headR:0.13, earLen:0.14, tailLen:0.5, snout:true, color:0x8a8a8e, belly:0xd0d0d2 });
+    case 'mountaingoat': return quadruped({ len:1.2, h:0.68, w:0.48, legH:0.55, legR:0.05, neckLen:0.35, neckTilt:0.7, headR:0.13, earLen:0.12, tailLen:0.12, hornSpike:1.8, color:0xeeeae2, belly:0xf6f2ea });
+    case 'bighorn': return quadruped({ len:1.35, h:0.72, w:0.5, legH:0.6, legR:0.05, neckLen:0.35, neckTilt:0.7, headR:0.14, earLen:0.1, tailLen:0.1, hornCurl:1, rump:0xe8e2d2, color:0x9a8668 });
+    case 'caribou': return quadruped({ len:1.6, h:0.8, w:0.5, legH:0.85, legR:0.05, neckLen:0.5, neckTilt:0.6, headR:0.14, earLen:0.13, tailLen:0.15, antlers:1.5, belly:0xd8d0c0, chest:0xe8e2d6, color:0x8a7a62 });
+    case 'bison': return quadruped({ len:2.3, h:1.3, w:0.9, legH:0.62, legR:0.09, neckLen:0.3, neckTilt:1.0, headR:0.22, earLen:0.1, tailLen:0.35, hump:true, hornCurl:1, mane:0x33271a, color:0x4a3826 });
+    case 'grizzly': return quadruped({ len:2.2, h:1.2, w:0.95, legH:0.65, legR:0.11, neckLen:0.42, neckTilt:0.9, headR:0.24, earLen:0.11, tailLen:0, hump:true, snout:true, color:0x6a4e2e });
+    // --- safari big game ---
+    case 'warthog': return quadruped({ len:1.1, h:0.58, w:0.42, legH:0.4, legR:0.045, neckLen:0.22, neckTilt:1.0, headR:0.17, earLen:0.12, tailLen:0.3, tusks:true, snout:true, ridge:true, color:0x7a6a58 });
+    case 'gazelle': return quadruped({ len:0.95, h:0.5, w:0.3, legH:0.58, legR:0.024, neckLen:0.4, neckTilt:0.5, headR:0.095, earLen:0.13, tailLen:0.15, hornSpike:2.6, color:0xc8a058, belly:0xf2ecd8 });
+    case 'zebra': return quadruped({ len:1.45, h:0.78, w:0.5, legH:0.82, legR:0.05, neckLen:0.55, neckTilt:0.6, headR:0.15, earLen:0.15, tailLen:0.45, map:makeStripeTex(), mane:0x222222, color:0xe8e8e8 });
+    case 'wildebeest': return quadruped({ len:1.7, h:0.9, w:0.55, legH:0.82, legR:0.055, neckLen:0.4, neckTilt:0.8, headR:0.18, earLen:0.13, tailLen:0.5, hornCurl:1, mane:0x2a2622, color:0x55504a });
+    case 'kudu': return quadruped({ len:1.8, h:1.0, w:0.55, legH:0.95, legR:0.055, neckLen:0.6, neckTilt:0.6, headR:0.16, earLen:0.2, tailLen:0.3, hornSpiral:true, belly:0xa8a096, color:0x8a8276 });
+    case 'lion': return quadruped({ len:1.7, h:0.85, w:0.6, legH:0.68, legR:0.07, neckLen:0.35, neckTilt:0.8, headR:0.18, earLen:0.09, tailLen:0.8, maneBall:0x6a4520, color:0xc8a05a, belly:0xe0c898 });
+    case 'capebuffalo': return quadruped({ len:2.2, h:1.2, w:0.9, legH:0.72, legR:0.09, neckLen:0.35, neckTilt:0.9, headR:0.23, earLen:0.14, tailLen:0.5, hornCurl:2, color:0x2e2a26 });
   }
 }
 
@@ -557,7 +639,8 @@ function buildHunter() {
 }
 
 // ---------- World building ----------
-let worldGroup = null, animalGroup = null, snowPts = null, animalBlob = null;
+let worldGroup = null, animalGroup = null, snowPts = null;
+let animals = [], targetIdx = -1;
 let bloodBits = [];
 let hunterY = 0; // 0 on the ground, 3.0 up in a tree stand
 let sunLight, ambLight, hemiLight;
@@ -581,6 +664,14 @@ function leafTree(scale, env) {
   P(t, new THREE.CylinderGeometry(0.15*scale, 0.25*scale, 2*scale, 6), Mat(env.trunk), 0, scale, 0);
   const blob = P(t, new THREE.SphereGeometry(1.4*scale, 7, 6), Mat(env.tree), 0, 2.6*scale, 0);
   blob.scale.y = 0.85;
+  return t;
+}
+
+function acaciaTree(scale, env) {
+  const t = new THREE.Group();
+  P(t, new THREE.CylinderGeometry(0.10*scale, 0.18*scale, 2.4*scale, 6), Mat(env.trunk), 0, 1.2*scale, 0, 0, 0, rnd(-0.08, 0.08));
+  const canopy = P(t, new THREE.SphereGeometry(1.5*scale, 8, 6), Mat(env.tree), 0, 2.7*scale, 0);
+  canopy.scale.set(1.4, 0.32, 1.4); // the flat African crown
   return t;
 }
 
@@ -636,14 +727,15 @@ function buildWorld(level) {
     const laneHalf = 4 + Math.abs(z)*0.06; // lane widens with distance
     if (Math.abs(x) < laneHalf && z < -3 && z > -D - 25) x = Math.sign(x || 1) * (laneHalf + rnd(2, 30));
     const s = rnd(1.6, 3.6) * (1 + Math.abs(z)/300);
-    const tree = (Math.random() < 0.75 || env.snow) ? pineTree(s, env) : leafTree(s*0.8, env);
+    const tree = env.acacia ? acaciaTree(s*0.9, env)
+      : (Math.random() < 0.75 || env.snow) ? pineTree(s, env) : leafTree(s*0.8, env);
     tree.position.set(x, 0, z);
     tree.rotation.y = rnd(0, Math.PI*2);
     worldGroup.add(tree);
   }
   // dense backdrop treeline behind the animal
   for (let i=0;i<26;i++) {
-    const tree = pineTree(rnd(3,5.5), env);
+    const tree = env.acacia ? acaciaTree(rnd(2.5, 4.5), env) : pineTree(rnd(3, 5.5), env);
     tree.position.set(rnd(-120,120), 0, -D - rnd(28, 90));
     worldGroup.add(tree);
   }
@@ -677,18 +769,27 @@ function buildWorld(level) {
     scene.add(snowPts);
   }
 
-  // animal
-  animalGroup = makeAnimal(level.type);
-  animalGroup.position.set(rnd(-1.5, 1.5), 0, -D);
-  animalGroup.rotation.y = Math.random() < 0.5 ? 0 : Math.PI; // broadside either way
-  animalGroup.userData.baseYaw = animalGroup.rotation.y;
-  animalGroup.userData.wander = { mode:'graze', t:0, dur:rnd(1.2, 2.5) };
-  worldGroup.add(animalGroup);
-  // soft blob shadow under animal (follows it around)
-  animalBlob = new THREE.Mesh(new THREE.CircleGeometry(animalGroup.userData.size*0.9, 16),
-    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.30 }));
-  animalBlob.rotation.x = -Math.PI/2; animalBlob.position.set(animalGroup.position.x, 0.02, animalGroup.position.z);
-  worldGroup.add(animalBlob);
+  // animals — sometimes a whole herd; re-aim to switch targets
+  animals = [];
+  const count = level.count || 1;
+  for (let i = 0; i < count; i++) {
+    const a = makeAnimal(level.type);
+    const spread = 3 + D*0.04;
+    a.position.set(rnd(-spread, spread), 0, -D + rnd(-8, 8));
+    a.rotation.y = Math.random() < 0.5 ? 0 : Math.PI; // broadside either way
+    a.userData.baseYaw = a.rotation.y;
+    a.userData.wander = { mode:'graze', t:rnd(0, 2), dur:rnd(1.2, 2.5) };
+    worldGroup.add(a);
+    // soft blob shadow (follows its animal)
+    const blob = new THREE.Mesh(new THREE.CircleGeometry(a.userData.size*0.9, 16),
+      new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.30 }));
+    blob.rotation.x = -Math.PI/2; blob.position.set(a.position.x, 0.02, a.position.z);
+    worldGroup.add(blob);
+    a.userData.blob = blob;
+    animals.push(a);
+  }
+  targetIdx = -1;            // first scope-in targets animal 0
+  animalGroup = animals[0];  // current target
 
   // elevated tree stand on the big hunts
   hunterY = level.stand ? 3.0 : 0;
@@ -1008,13 +1109,13 @@ function vitalWorld() {
   return animalGroup.localToWorld(animalGroup.userData.vital.clone());
 }
 function aimAmplitude() {
-  // grows with level: mostly on-vitals at level 1, harder later; bow is hardest to hold steady
+  // grows over 25 hunts: mostly on-vitals at hunt 1, hard-earned by the cape buffalo
   const r = animalGroup.userData.vitalR;
-  return r * (1.22 + levelIdx * 0.26) * WEAPONS[weapon].sway;
+  return r * (1.2 + levelIdx * 0.11) * WEAPONS[weapon].sway;
 }
 function aimOffset(t) {
   const A = aimAmplitude();
-  const sp = 1.12 + levelIdx * 0.11; // sway speed grows slightly
+  const sp = 1.12 + levelIdx * 0.05; // sway speed grows slightly
   const x = A * (0.62*Math.sin(t*1.1*sp + aimPhase) + 0.38*Math.sin(t*2.3*sp + aimPhase*1.7));
   const y = A * (0.62*Math.sin(t*0.9*sp + aimPhase*2.3) + 0.38*Math.sin(t*1.9*sp + aimPhase*0.6));
   return new THREE.Vector2(x, y);
@@ -1167,6 +1268,8 @@ function impact() {
   else                  animalAnim = { kind:'flee',    t:0 }; // graze/miss: bolts
   animalAnim.yaw0 = animalGroup.rotation.y;
   B.linger = { drop:2.4, stagger:3.4, flail:3.6, flee:2.2 }[animalAnim.kind];
+  // a gunshot scatters the rest of the herd — a silent arrow doesn't
+  if (weapon !== 'bow') animals.forEach(a => { if (a !== animalGroup) a.userData.spooked = true; });
 }
 
 // ---------- Shot placement diagram (species-accurate, all facing left) ----------
@@ -1313,8 +1416,11 @@ function dgAnatomy(type) {
     }
   }
 }
+const DIAG_ALIAS = { muledeer:'deer', pronghorn:'deer', caribou:'elk', wolf:'coyote', mountaingoat:'deer',
+  bighorn:'deer', bison:'bear', grizzly:'bear', warthog:'boar', gazelle:'deer', zebra:'deer',
+  wildebeest:'elk', kudu:'elk', lion:'bear', capebuffalo:'bear' };
 function renderVitalsDiagram(offX, offY, vitalR, mirror, type) {
-  const A = dgAnatomy(type) || dgAnatomy('deer');
+  const A = dgAnatomy(DIAG_ALIAS[type] || type) || dgAnatomy('deer');
   const vx = A.vx, vy = A.vy, R = A.R;
   const s = R / vitalR;
   let hx = vx + mirror * offX * s;
@@ -1727,6 +1833,8 @@ function pressStart(y) {
   }
   if (state === S.IDLE) {
     state = S.SCOPED;
+    targetIdx = (targetIdx + 1) % animals.length; // in a herd, re-aiming switches targets
+    animalGroup = animals[targetIdx];
     scopedTime = rnd(0, 10);
     aimPhase = rnd(0, 100);
     pressing = true; pressStartY = y; fired = false;
@@ -1736,7 +1844,8 @@ function pressStart(y) {
     $('aimRifle').style.display = weapon === 'rifle' ? 'block' : 'none';
     $('aimBow').style.display = weapon === 'bow' ? 'block' : 'none';
     $('aimShot').style.display = weapon === 'shotgun' ? 'block' : 'none';
-    $('scopeInfo').textContent = LEVELS[levelIdx].dist + ' YDS • ' + WEAPONS[weapon].label.toUpperCase() + ' • ' + LEVELS[levelIdx].name.toUpperCase();
+    $('scopeInfo').textContent = LEVELS[levelIdx].dist + ' YDS • ' + WEAPONS[weapon].label.toUpperCase() + ' • ' + LEVELS[levelIdx].name.toUpperCase()
+      + (animals.length > 1 ? ' • TARGET ' + (targetIdx+1) + '/' + animals.length + ' (re-aim to switch)' : '');
   }
 }
 function pressMove(y) {
@@ -1888,57 +1997,75 @@ function bulletCamera(dt) {
 }
 
 // ---------- Animal animation ----------
+function wanderAnimal(a, dt, t) {
+  // pre-shot behavior: graze <-> amble around (more restless at higher levels)
+  const ud = a.userData;
+  const legs = ud.legs || [];
+  const w = ud.wander;
+  if (!w) return;
+  w.t += dt;
+  if (w.t >= w.dur) {
+    w.t = 0;
+    const walkP = 0.45 + levelIdx * 0.02;
+    if (w.mode !== 'walk' && Math.random() < walkP) {
+      w.mode = 'walk';
+      w.dur = rnd(1.4, 2.4 + levelIdx * 0.15);
+      // mostly broadside headings; steer back if straying from the clearing
+      const D = LEVELS[levelIdx].dist;
+      let target = (Math.random() < 0.5 ? 0 : Math.PI) + rnd(-0.5, 0.5);
+      if (Math.abs(a.position.x) > 4 + D*0.05)
+        target = a.position.x > 0 ? Math.PI + rnd(-0.3, 0.3) : rnd(-0.3, 0.3);
+      w.heading = target;
+      w.speed = (ud.size * 0.55 + 0.25) * (1 + levelIdx * 0.07);
+    } else {
+      w.mode = 'graze';
+      w.dur = rnd(1.6, Math.max(1.8, 4 - levelIdx * 0.1));
+    }
+  }
+  if (w.mode === 'walk') {
+    let dy = w.heading - a.rotation.y;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    a.rotation.y += dy * Math.min(1, dt * 2.5);
+    const yaw = a.rotation.y;
+    a.position.x += Math.cos(yaw) * w.speed * dt;
+    a.position.z += -Math.sin(yaw) * w.speed * dt;
+    const D = LEVELS[levelIdx].dist, halfW = 5 + D*0.06;
+    a.position.x = Math.max(-halfW, Math.min(halfW, a.position.x));
+    a.position.z = Math.max(-D - 10, Math.min(-D + 10, a.position.z));
+    a.position.y = Math.abs(Math.sin(w.t*6)) * ud.size * 0.015;
+    legs.forEach((l, i) => { l.rotation.z = Math.sin(w.t*7 + i*Math.PI) * 0.28; });
+    if (ud.head && ud.headY0 !== undefined) ud.head.position.y = ud.headY0; // head up while moving
+  } else {
+    // grazing: gentle breathing, head dips to the ground and back up
+    a.position.y = Math.sin(t*1.8 + (ud.wander.phase || 0)) * 0.01;
+    legs.forEach(l => { l.rotation.z *= Math.max(0, 1 - 6*dt); });
+    if (ud.head) {
+      if (ud.headY0 === undefined) ud.headY0 = ud.head.position.y;
+      ud.head.position.y = ud.headY0 - Math.max(0, Math.sin(w.t*1.1)) * ud.size * 0.07;
+    }
+  }
+}
+function spookRun(a, dt) {
+  // the rest of the herd bolts at the gunshot
+  const ud = a.userData;
+  ud.spookT = (ud.spookT || 0) + dt;
+  const sp = ud.size * 8 + 5;
+  const fx = Math.cos(a.rotation.y) >= 0 ? 1 : -1;
+  a.position.x += fx * sp * dt;
+  a.position.z -= sp * 0.4 * dt;
+  a.position.y = Math.abs(Math.sin(ud.spookT*9)) * ud.size * 0.12;
+  (ud.legs || []).forEach((l, i) => { l.rotation.z = Math.sin(ud.spookT*15 + i*Math.PI) * 0.6; });
+}
 function animateAnimal(dt, t) {
-  if (!animalGroup) return;
+  if (!animals.length) return;
+  animals.forEach(a => {
+    if (a === animalGroup && animalAnim) return; // the target's reaction is handled below
+    if (a.userData.spooked) spookRun(a, dt);
+    else wanderAnimal(a, dt, t);
+  });
+  if (!animalAnim) return;
   const ud = animalGroup.userData;
   const legs = ud.legs || [];
-  if (!animalAnim) {
-    // ---- pre-shot behavior: graze <-> amble around (more restless at higher levels) ----
-    const w = ud.wander;
-    if (!w) return;
-    w.t += dt;
-    if (w.t >= w.dur) {
-      w.t = 0;
-      const walkP = 0.45 + levelIdx * 0.05;
-      if (w.mode !== 'walk' && Math.random() < walkP) {
-        w.mode = 'walk';
-        w.dur = rnd(1.4, 2.4 + levelIdx * 0.35);
-        // mostly broadside headings; steer back if straying from the clearing
-        const D = LEVELS[levelIdx].dist;
-        let target = (Math.random() < 0.5 ? 0 : Math.PI) + rnd(-0.5, 0.5);
-        if (Math.abs(animalGroup.position.x) > 4 + D*0.05)
-          target = animalGroup.position.x > 0 ? Math.PI + rnd(-0.3, 0.3) : rnd(-0.3, 0.3);
-        w.heading = target;
-        w.speed = (ud.size * 0.55 + 0.25) * (1 + levelIdx * 0.15);
-      } else {
-        w.mode = 'graze';
-        w.dur = rnd(1.6, Math.max(1.8, 4 - levelIdx * 0.25));
-      }
-    }
-    if (w.mode === 'walk') {
-      let dy = w.heading - animalGroup.rotation.y;
-      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-      animalGroup.rotation.y += dy * Math.min(1, dt * 2.5);
-      const yaw = animalGroup.rotation.y;
-      animalGroup.position.x += Math.cos(yaw) * w.speed * dt;
-      animalGroup.position.z += -Math.sin(yaw) * w.speed * dt;
-      const D = LEVELS[levelIdx].dist, halfW = 5 + D*0.06;
-      animalGroup.position.x = Math.max(-halfW, Math.min(halfW, animalGroup.position.x));
-      animalGroup.position.z = Math.max(-D - 9, Math.min(-D + 9, animalGroup.position.z));
-      animalGroup.position.y = Math.abs(Math.sin(w.t*6)) * ud.size * 0.015;
-      legs.forEach((l, i) => { l.rotation.z = Math.sin(w.t*7 + i*Math.PI) * 0.28; });
-      if (ud.head && ud.headY0 !== undefined) ud.head.position.y = ud.headY0; // head up while moving
-    } else {
-      // grazing: gentle breathing, head dips to the ground and back up
-      animalGroup.position.y = Math.sin(t*1.8) * 0.01;
-      legs.forEach(l => { l.rotation.z *= Math.max(0, 1 - 6*dt); });
-      if (ud.head) {
-        if (ud.headY0 === undefined) ud.headY0 = ud.head.position.y;
-        ud.head.position.y = ud.headY0 - Math.max(0, Math.sin(w.t*1.1)) * ud.size * 0.07;
-      }
-    }
-    return;
-  }
   animalAnim.t += dt;
   const at = animalAnim.t;
   const baseY = animalAnim.yaw0 !== undefined ? animalAnim.yaw0 : (ud.baseYaw || 0);
@@ -2066,7 +2193,7 @@ function tick() {
     // bullet in flight = slow-mo: the world holds still until impact
     const frozen = state === S.BULLET && !B.impactDone;
     if (!frozen) animateAnimal(dt, t);
-    if (animalBlob) animalBlob.position.set(animalGroup.position.x, 0.02, animalGroup.position.z);
+    animals.forEach(a => { const b = a.userData.blob; if (b) b.position.set(a.position.x, 0.02, a.position.z); });
   }
 
   if (state === S.IDLE || state === S.RESULT || state === S.OVER || state === S.START || state === S.WEAPON) idleCamera(t);
