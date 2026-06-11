@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Mike's Big Hunt</title>
@@ -14,10 +14,19 @@
   .overlay { position:fixed; inset:0; pointer-events:none; }
 
   /* HUD */
-  #hud { top:0; left:0; right:0; padding:14px 20px; display:flex; justify-content:space-between; align-items:flex-start; color:#fff; text-shadow:0 2px 6px rgba(0,0,0,.8); z-index:30; }
-  #hud .lvl { font-size:20px; font-weight:bold; letter-spacing:1px; }
-  #hud .sub { font-size:15px; opacity:.85; margin-top:3px; }
-  #hud .score { font-size:22px; font-weight:bold; text-align:right; }
+  #hud { top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+    color:#fff; text-shadow:0 2px 6px rgba(0,0,0,.8); z-index:30;
+    padding:calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 12px calc(16px + env(safe-area-inset-left)); }
+  #hud > div:first-child { min-width:0; flex:1 1 auto; }
+  #hud .lvl { font-size:20px; font-weight:bold; letter-spacing:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #hud .sub { font-size:15px; opacity:.85; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #hud .score { font-size:22px; font-weight:bold; text-align:right; flex:0 0 auto; }
+  @media (max-width: 760px) {
+    #hud .lvl { font-size:15px; }
+    #hud .sub { font-size:11px; }
+    #hud .score { font-size:17px; }
+    #hud .score .sub { font-size:11px; }
+  }
 
   /* hint */
   #hint { bottom:30px; left:0; right:0; text-align:center; color:#fff; font-size:19px; text-shadow:0 2px 8px rgba(0,0,0,.9); transition:opacity .4s; }
@@ -61,6 +70,23 @@
   #vitalsWrap svg { width:min(76vw, 380px); height:auto; filter:drop-shadow(0 4px 12px rgba(0,0,0,.55)); }
   #verBadge { position:fixed; bottom:10px; left:14px; z-index:50; color:#fff; font-size:13px;
     opacity:.6; letter-spacing:1px; text-shadow:0 1px 4px #000; pointer-events:none; }
+  /* compact result/score card so nothing clips on phones & small tablets */
+  @media (max-width: 760px), (max-height: 720px) {
+    .panel { padding:10px; }
+    .panel h2 { font-size:19px; margin-bottom:3px; }
+    .panel .stars { font-size:21px; letter-spacing:4px; margin-bottom:2px; }
+    .panel .pts { font-size:30px; margin:2px 0; }
+    .panel p { font-size:13px; line-height:1.35; margin-bottom:4px; max-width:92vw; }
+    .panel .tap { margin-top:8px; font-size:15px; padding:9px 26px; }
+    #resBest { font-size:12px !important; margin-bottom:2px !important; }
+    #vitalsWrap { margin:2px 0; }
+    #vitalsWrap .vtitle { font-size:11px; letter-spacing:1px; margin-bottom:2px; }
+    #vitalsWrap svg { width:min(56vw, 250px); max-height:26vh; }
+    #startScreen .logo { font-size:32px; }
+    /* keep aiming instructions clear of the level details up top */
+    #fireHint { top:auto; bottom:15%; left:0; right:0; transform:none; text-align:center; font-size:13px; }
+    #scopeInfo { bottom:9%; left:0; right:0; transform:none; text-align:center; font-size:11px; letter-spacing:1px; }
+  }
   /* weapon-specific aim views */
   .aimview { position:absolute; inset:0; display:none; }
   .vig { position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(0,0,0,.5) 100%); }
@@ -163,7 +189,7 @@
   </div>
 </div>
 
-<div id="verBadge">v1.46</div>
+<div id="verBadge">v1.52</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -290,42 +316,76 @@ const LEVELS = [
 ];
 
 // ---------- Animal builders ----------
+// streaky fur texture generated per coat color (cached)
+const furCache = {};
+function makeFurTex(hex) {
+  if (furCache[hex]) return furCache[hex];
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const ctx = cv.getContext('2d');
+  const base = new THREE.Color(hex);
+  ctx.fillStyle = '#' + base.getHexString();
+  ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 1000; i++) { // short hair strokes, lighter and darker
+    const cc = base.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.10);
+    ctx.strokeStyle = '#' + cc.getHexString();
+    ctx.lineWidth = 1;
+    const x = Math.random()*128, y = Math.random()*128, len = 3 + Math.random()*6;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random()-0.5)*2.5, y + len); ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  furCache[hex] = tex;
+  return tex;
+}
+function FurMat(hex) { // smooth-shaded furry coat
+  return new THREE.MeshStandardMaterial({ map: makeFurTex(hex), roughness: 1 });
+}
+const boneSmooth = new THREE.MeshStandardMaterial({ color:0xd8cdb0, roughness:.55 });
+
 function quadruped(o) {
   // o: {len,h,w, legH,legR, neckLen,neckTilt, headR, earLen, tailLen, color, belly, antlers, palmAntlers, tusks, snout, bushyTail, sit}
   const g = new THREE.Group();
   const c = o.map
-    ? new THREE.MeshStandardMaterial({ map:o.map, roughness:.92, flatShading:true })
-    : Mat(o.color);
-  const body = P(g, new THREE.SphereGeometry(1, 10, 8), c, 0, o.legH + o.h*0.5, 0);
+    ? new THREE.MeshStandardMaterial({ map:o.map, roughness:.95 })
+    : FurMat(o.color);
+  const body = P(g, new THREE.SphereGeometry(1, 18, 14), c, 0, o.legH + o.h*0.5, 0);
   body.scale.set(o.len*0.5, o.h*0.5, o.w*0.5);
+  // deeper chest/brisket mass through the shoulder — kills the "egg" silhouette
+  const chest = P(g, new THREE.SphereGeometry(1, 16, 12), c, o.len*0.20, o.legH + o.h*0.46, 0);
+  chest.scale.set(o.len*0.27, o.h*0.54, o.w*0.50);
+  // haunch mass at the rear
+  const haunch = P(g, new THREE.SphereGeometry(1, 16, 12), c, -o.len*0.30, o.legH + o.h*0.44, 0);
+  haunch.scale.set(o.len*0.22, o.h*0.50, o.w*0.48);
   // belly patch
   if (o.belly) {
-    const b = P(g, new THREE.SphereGeometry(1, 9, 7), Mat(o.belly), 0, o.legH + o.h*0.30, 0);
+    const b = P(g, new THREE.SphereGeometry(1, 14, 10), FurMat(o.belly), 0, o.legH + o.h*0.30, 0);
     b.scale.set(o.len*0.40, o.h*0.32, o.w*0.46);
   }
-  // shoulder hump (bear)
+  // shoulder hump (bear/bison)
   if (o.hump) {
-    const hm = P(g, new THREE.SphereGeometry(1, 8, 6), c, o.len*0.16, o.legH + o.h*0.88, 0);
+    const hm = P(g, new THREE.SphereGeometry(1, 14, 10), c, o.len*0.16, o.legH + o.h*0.88, 0);
     hm.scale.set(o.len*0.17, o.h*0.30, o.w*0.38);
   }
-  // legs (pivot at hip so they can run/kick), dark hooves, optional socks
+  // legs (pivot at hip so they can run/kick): muscled upper, hock joint, slim cannon, dark hoof
   const darkMat = Mat(0x1e1a16);
   const legs = [];
-  const lg = new THREE.CylinderGeometry(o.legR, o.legR*0.7, o.legH, 6);
   const lx = o.len*0.32, lz = o.w*0.28;
   [[-lx,-lz],[-lx,lz],[lx,-lz],[lx,lz]].forEach(p => {
     const leg = new THREE.Group();
-    P(leg, lg, c, 0, -o.legH*0.5, 0);
-    if (o.socks) P(leg, new THREE.CylinderGeometry(o.legR*0.78, o.legR*0.6, o.legH*0.45, 6), Mat(o.socks), 0, -o.legH*0.76, 0);
-    P(leg, new THREE.CylinderGeometry(o.legR*0.88, o.legR*0.95, o.legH*0.14, 6), darkMat, 0, -o.legH*0.93, 0);
+    P(leg, new THREE.CylinderGeometry(o.legR*1.0, o.legR*1.45, o.legH*0.52, 10), c, 0, -o.legH*0.26, 0); // thigh/forearm
+    P(leg, new THREE.SphereGeometry(o.legR*1.05, 10, 8), c, 0, -o.legH*0.52, 0);                          // hock/knee joint
+    P(leg, new THREE.CylinderGeometry(o.legR*0.55, o.legR*0.85, o.legH*0.42, 10), c, 0, -o.legH*0.72, 0); // cannon
+    if (o.socks) P(leg, new THREE.CylinderGeometry(o.legR*0.78, o.legR*0.6, o.legH*0.45, 10), FurMat(o.socks), 0, -o.legH*0.76, 0);
+    P(leg, new THREE.CylinderGeometry(o.legR*0.62, o.legR*0.78, o.legH*0.14, 10), darkMat, 0, -o.legH*0.93, 0); // hoof
     leg.position.set(p[0], o.legH, p[1]);
     g.add(leg); legs.push(leg);
   });
   // neck + head (head toward +x)
   const nx = o.len*0.42, ny = o.legH + o.h*0.78;
-  const neck = P(g, new THREE.CylinderGeometry(o.headR*0.6, o.headR*0.8, o.neckLen, 7), c, nx, ny, 0, 0, 0, -o.neckTilt);
+  const neck = P(g, new THREE.CylinderGeometry(o.headR*0.6, o.headR*0.85, o.neckLen, 12), c, nx, ny, 0, 0, 0, -o.neckTilt);
   const hx = nx + Math.sin(o.neckTilt)*o.neckLen*0.62, hy = ny + Math.cos(o.neckTilt)*o.neckLen*0.62;
-  const head = P(g, new THREE.SphereGeometry(o.headR, 9, 7), c, hx, hy, 0);
+  const head = P(g, new THREE.SphereGeometry(o.headR, 16, 12), c, hx, hy, 0);
   head.scale.set(1.25, 1, 0.9);
   // eyes + nose
   for (const s of [-1,1]) P(g, new THREE.SphereGeometry(o.headR*0.13, 6, 5), Mat(0x141210), hx + o.headR*0.55, hy + o.headR*0.28, s*o.headR*0.62);
@@ -336,44 +396,56 @@ function quadruped(o) {
     P(g, new THREE.SphereGeometry(o.headR*0.30, 6, 5), Mat(0x141210), hx + o.headR*1.85, hy - o.headR*0.15, 0);
   }
   // species markings
-  if (o.mane) P(g, new THREE.CylinderGeometry(o.headR*1.05, o.headR*1.45, o.neckLen*0.9, 7), Mat(o.mane), nx, ny - o.h*0.05, 0, 0, 0, -o.neckTilt);
+  if (o.mane) P(g, new THREE.CylinderGeometry(o.headR*1.05, o.headR*1.45, o.neckLen*0.9, 12), FurMat(o.mane), nx, ny - o.h*0.05, 0, 0, 0, -o.neckTilt);
   if (o.chest) {
-    const ch = P(g, new THREE.SphereGeometry(1, 7, 6), Mat(o.chest), o.len*0.40, o.legH + o.h*0.38, 0);
+    const ch = P(g, new THREE.SphereGeometry(1, 12, 9), FurMat(o.chest), o.len*0.40, o.legH + o.h*0.38, 0);
     ch.scale.set(o.len*0.12, o.h*0.26, o.w*0.30);
   }
   if (o.rump) {
-    const rp = P(g, new THREE.SphereGeometry(1, 7, 6), Mat(o.rump), -o.len*0.46, o.legH + o.h*0.52, 0);
+    const rp = P(g, new THREE.SphereGeometry(1, 12, 9), FurMat(o.rump), -o.len*0.46, o.legH + o.h*0.52, 0);
     rp.scale.set(o.len*0.12, o.h*0.30, o.w*0.42);
   }
-  if (o.ridge) for (let i=0;i<5;i++)
-    P(g, new THREE.ConeGeometry(o.h*0.07, o.h*0.22, 5), Mat(0x2e2620), (i-2)*o.len*0.14, o.legH + o.h*1.02, 0);
+  if (o.ridge) for (let i=0;i<7;i++) // bristled crest, denser
+    P(g, new THREE.ConeGeometry(o.h*0.06, o.h*0.20, 5), FurMat(0x2e2620), (i-3)*o.len*0.10, o.legH + o.h*1.02, 0, 0, 0, -0.15);
   if (o.dewlap) P(g, new THREE.BoxGeometry(o.headR*0.45, o.headR*1.2, o.headR*0.28), c, hx + o.headR*0.1, hy - o.headR*1.35, 0);
-  // ears
+  // ears: leaf-shaped, flattened, slightly cupped
   if (o.earLen > 0) {
-    const eg = new THREE.ConeGeometry(o.headR*0.32, o.earLen, 5);
-    P(g, eg, c, hx - o.headR*0.3, hy + o.headR*0.8 + o.earLen*0.4, o.headR*0.5, 0.25, 0, 0.15);
-    P(g, eg, c, hx - o.headR*0.3, hy + o.headR*0.8 + o.earLen*0.4, -o.headR*0.5, -0.25, 0, 0.15);
+    const eg = new THREE.ConeGeometry(o.headR*0.34, o.earLen, 8);
+    const e1 = P(g, eg, c, hx - o.headR*0.3, hy + o.headR*0.8 + o.earLen*0.4, o.headR*0.5, 0.32, 0, 0.15);
+    const e2 = P(g, eg, c, hx - o.headR*0.3, hy + o.headR*0.8 + o.earLen*0.4, -o.headR*0.5, -0.32, 0, 0.15);
+    e1.scale.set(1, 1, 0.4); e2.scale.set(1, 1, 0.4);
   }
   // tail
   if (o.bushyTail) {
-    const t = P(g, new THREE.SphereGeometry(o.h*0.22, 7, 6), c, -o.len*0.55, o.legH + o.h*0.55, 0);
+    const t = P(g, new THREE.SphereGeometry(o.h*0.22, 12, 9), c, -o.len*0.55, o.legH + o.h*0.55, 0);
     t.scale.set(2.2, 0.8, 0.8);
-    if (o.tailTip) P(g, new THREE.SphereGeometry(o.h*0.13, 6, 5), Mat(o.tailTip), -o.len*0.55 - o.h*0.40, o.legH + o.h*0.55, 0);
+    if (o.tailTip) P(g, new THREE.SphereGeometry(o.h*0.13, 10, 8), FurMat(o.tailTip), -o.len*0.55 - o.h*0.40, o.legH + o.h*0.55, 0);
   } else if (o.tailLen > 0) {
-    P(g, new THREE.CylinderGeometry(o.h*0.05, o.h*0.02, o.tailLen, 5), c, -o.len*0.52, o.legH + o.h*0.6, 0, 0, 0, 1.0);
+    // jointed tail: hangs from the rump, drapes down and back, optional tuft
+    const tl = o.tailLen;
+    const tg = new THREE.Group();
+    tg.position.set(-o.len*0.50, o.legH + o.h*0.64, 0);
+    P(tg, new THREE.CylinderGeometry(o.h*0.030, o.h*0.045, tl*0.55, 8), c, -tl*0.13, -tl*0.24, 0, 0, 0, -0.5);
+    P(tg, new THREE.CylinderGeometry(o.h*0.016, o.h*0.030, tl*0.5, 8), c, -tl*0.27, -tl*0.66, 0, 0, 0, -0.12);
+    if (o.tailTuft) P(tg, new THREE.SphereGeometry(o.h*0.075, 10, 8), FurMat(o.tailTuft), -tl*0.30, -tl*0.95, 0).scale.set(1, 1.5, 1);
+    g.add(tg);
   }
-  // antlers
-  const boneMat = Mat(0xd8cdb0);
+  // antlers: curved main beam with brow tine + three swept points per side
+  const boneMat = boneSmooth;
   if (o.antlers) {
     for (const s of [-1, 1]) {
-      const a = P(g, new THREE.CylinderGeometry(0.025*o.antlers, 0.035*o.antlers, o.headR*3.2, 5), boneMat, hx - o.headR*0.2, hy + o.headR*1.6, s*o.headR*0.45, s*0.5, 0, 0.35);
-      for (let i=0;i<3;i++)
-        P(a, new THREE.CylinderGeometry(0.015*o.antlers, 0.022*o.antlers, o.headR*1.2, 4), boneMat, 0, -o.headR*1.1 + i*o.headR*1.0, 0, 0.9, 0, 0.5);
+      const a = P(g, new THREE.CylinderGeometry(0.016*o.antlers, 0.034*o.antlers, o.headR*3.4, 8), boneMat,
+        hx - o.headR*0.2, hy + o.headR*1.7, s*o.headR*0.45, s*0.5, 0, 0.38);
+      for (let i=0;i<4;i++)
+        P(a, new THREE.CylinderGeometry(0.004*o.antlers, 0.015*o.antlers, o.headR*(1.45 - i*0.22), 6), boneMat,
+          0, -o.headR*1.25 + i*o.headR*0.78, 0, 0.95, 0, i%2 ? 0.5 : 0.12);
     }
   }
   if (o.palmAntlers) {
     for (const s of [-1, 1]) {
       const pa = P(g, new THREE.BoxGeometry(o.headR*1.8, o.headR*1.5, o.headR*0.18), boneMat, hx - o.headR*0.1, hy + o.headR*1.8, s*o.headR*1.1, 0.3*s, s*0.4, 0);
+      for (let i=0;i<4;i++) // finger tines along the palm edge
+        P(pa, new THREE.ConeGeometry(o.headR*0.09, o.headR*0.55, 6), boneMat, (i-1.5)*o.headR*0.42, o.headR*0.9, 0, 0, 0, (i-1.5)*0.18);
     }
   }
   if (o.tusks) {
@@ -404,7 +476,8 @@ function quadruped(o) {
     vitalR: o.h*0.34,
     size: o.legH + o.h,
     head: head,
-    legs: legs
+    legs: legs,
+    bodyDims: { cx:0, cy:o.legH + o.h*0.5, rx:o.len*0.5, ry:o.h*0.5, rz:o.w*0.5 } // body ellipsoid, for surface wounds
   };
   return g;
 }
@@ -412,9 +485,16 @@ function quadruped(o) {
 function bird(o) {
   // o: {bodyR, neckLen, headR, tailFan, color, headColor, wattle}
   const g = new THREE.Group();
-  const c = Mat(o.color);
-  const body = P(g, new THREE.SphereGeometry(o.bodyR, 10, 8), c, 0, o.bodyR*1.15, 0);
+  const c = FurMat(o.color);
+  const body = P(g, new THREE.SphereGeometry(o.bodyR, 16, 12), c, 0, o.bodyR*1.15, 0);
   body.scale.set(1.5, 1.05, 0.95);
+  // folded wings along the flanks, a shade darker than the body
+  const wingCol = new THREE.Color(o.color).offsetHSL(0, 0, -0.06).getHex();
+  for (const s of [-1,1]) {
+    const wing = P(g, new THREE.SphereGeometry(o.bodyR*0.85, 12, 9), FurMat(wingCol), 0, o.bodyR*1.2, s*o.bodyR*0.72);
+    wing.scale.set(1.35, 0.75, 0.35);
+    wing.rotation.x = s*0.15;
+  }
   // legs
   const lm = Mat(0x9a8a4a);
   for (const s of [-1,1]) P(g, new THREE.CylinderGeometry(0.014, 0.012, o.bodyR*0.9, 5), lm, s*o.bodyR*0.25, o.bodyR*0.45, 0);
@@ -448,17 +528,18 @@ function bird(o) {
     vitalR: o.bodyR*0.55,
     size: o.bodyR*2.4,
     head: head,
-    legs: []
+    legs: [],
+    bodyDims: { cx:0, cy:o.bodyR*1.15, rx:o.bodyR*1.5, ry:o.bodyR*1.05, rz:o.bodyR*0.95 }
   };
   return g;
 }
 
 function rabbitModel() {
   const g = new THREE.Group();
-  const c = Mat(0x9a8468);
-  const body = P(g, new THREE.SphereGeometry(0.16, 9, 7), c, 0, 0.15, 0);
+  const c = FurMat(0x9a8468);
+  const body = P(g, new THREE.SphereGeometry(0.16, 16, 12), c, 0, 0.15, 0);
   body.scale.set(1.35, 1.1, 0.95);
-  const head = P(g, new THREE.SphereGeometry(0.09, 8, 6), c, 0.17, 0.28, 0);
+  const head = P(g, new THREE.SphereGeometry(0.09, 14, 10), c, 0.17, 0.28, 0);
   const eg = new THREE.CylinderGeometry(0.018, 0.025, 0.2, 5);
   const pink = Mat(0xd89aa0);
   P(g, eg, c, 0.15, 0.42, 0.035, 0.12, 0, 0.18);
@@ -468,7 +549,8 @@ function rabbitModel() {
   for (const s of [-1,1]) P(g, new THREE.SphereGeometry(0.013, 6, 5), Mat(0x141210), 0.23, 0.31, s*0.05); // eyes
   P(g, new THREE.SphereGeometry(0.014, 6, 5), pink, 0.26, 0.27, 0); // nose
   P(g, new THREE.SphereGeometry(0.045, 6, 5), Mat(0xf0ece0), -0.2, 0.16, 0); // tail
-  g.userData = { vital: new THREE.Vector3(0.04, 0.17, 0), vitalR: 0.085, size: 0.42, head, legs: [] };
+  g.userData = { vital: new THREE.Vector3(0.04, 0.17, 0), vitalR: 0.085, size: 0.42, head, legs: [],
+    bodyDims: { cx:0, cy:0.15, rx:0.216, ry:0.176, rz:0.152 } };
   return g;
 }
 
@@ -514,10 +596,10 @@ function makeAnimal(type) {
     // --- safari big game ---
     case 'warthog': return quadruped({ len:1.1, h:0.58, w:0.42, legH:0.4, legR:0.045, neckLen:0.22, neckTilt:1.0, headR:0.17, earLen:0.12, tailLen:0.3, tusks:true, snout:true, ridge:true, color:0x7a6a58 });
     case 'gazelle': return quadruped({ len:0.95, h:0.5, w:0.3, legH:0.58, legR:0.024, neckLen:0.4, neckTilt:0.5, headR:0.095, earLen:0.13, tailLen:0.15, hornSpike:2.6, color:0xc8a058, belly:0xf2ecd8 });
-    case 'zebra': return quadruped({ len:1.45, h:0.78, w:0.5, legH:0.82, legR:0.05, neckLen:0.55, neckTilt:0.6, headR:0.15, earLen:0.15, tailLen:0.45, map:makeStripeTex(), mane:0x222222, color:0xe8e8e8 });
-    case 'wildebeest': return quadruped({ len:1.7, h:0.9, w:0.55, legH:0.82, legR:0.055, neckLen:0.4, neckTilt:0.8, headR:0.18, earLen:0.13, tailLen:0.5, hornCurl:1, mane:0x2a2622, color:0x55504a });
+    case 'zebra': return quadruped({ len:1.45, h:0.78, w:0.5, legH:0.82, legR:0.05, neckLen:0.55, neckTilt:0.6, headR:0.15, earLen:0.15, tailLen:0.45, tailTuft:0x1c1c1c, map:makeStripeTex(), mane:0x222222, color:0xe8e8e8 });
+    case 'wildebeest': return quadruped({ len:1.7, h:0.9, w:0.55, legH:0.82, legR:0.055, neckLen:0.4, neckTilt:0.8, headR:0.18, earLen:0.13, tailLen:0.5, tailTuft:0x1a1614, hornCurl:1, mane:0x2a2622, color:0x55504a });
     case 'kudu': return quadruped({ len:1.8, h:1.0, w:0.55, legH:0.95, legR:0.055, neckLen:0.6, neckTilt:0.6, headR:0.16, earLen:0.2, tailLen:0.3, hornSpiral:true, belly:0xa8a096, color:0x8a8276 });
-    case 'lion': return quadruped({ len:1.7, h:0.85, w:0.6, legH:0.68, legR:0.07, neckLen:0.35, neckTilt:0.8, headR:0.18, earLen:0.09, tailLen:0.8, maneBall:0x6a4520, color:0xc8a05a, belly:0xe0c898 });
+    case 'lion': return quadruped({ len:1.7, h:0.85, w:0.6, legH:0.68, legR:0.07, neckLen:0.35, neckTilt:0.8, headR:0.18, earLen:0.09, tailLen:0.8, tailTuft:0x4a3018, maneBall:0x6a4520, color:0xc8a05a, belly:0xe0c898 });
     case 'capebuffalo': return quadruped({ len:2.2, h:1.2, w:0.9, legH:0.72, legR:0.09, neckLen:0.35, neckTilt:0.9, headR:0.23, earLen:0.14, tailLen:0.5, hornCurl:2, color:0x2e2a26 });
   }
 }
@@ -1326,25 +1408,82 @@ function impact() {
   }
   const r = B.result;
   const isHit = r.pts > 0;
-  // blood spray on a hit, dirt puff on a miss
-  const n = isHit ? 18 : 8;
+  // blood: a burst of fine mist carried through with the projectile + heavier drops that fall short
+  const n = isHit ? 26 : 8;
   for (let i=0;i<n;i++) {
-    const col = isHit ? (i % 3 ? 0x9a1010 : 0x6e0b0b) : 0x8a8a7a;
-    const p = new THREE.Mesh(new THREE.SphereGeometry(rnd(.025,.08), 5, 4),
-      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.95 }));
-    p.position.copy(B.to);
-    p.userData.vel = isHit
-      ? B.dir.clone().multiplyScalar(rnd(0.5, 2.5)).add(new THREE.Vector3(rnd(-1.4,1.4), rnd(0.3,2.2), rnd(-1.4,1.4)))
-      : new THREE.Vector3(rnd(-1,1), rnd(.5,2), rnd(-1,1));
+    let p;
+    if (isHit) {
+      const fine = i % 3 !== 0; // mostly atomized mist, a few heavy drops
+      const col = [0x9a1010, 0x6e0b0b, 0xb81f1f][i % 3];
+      p = new THREE.Mesh(new THREE.SphereGeometry(fine ? rnd(0.015, 0.035) : rnd(0.045, 0.075), 5, 4),
+        new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.95 }));
+      p.position.copy(B.to);
+      p.userData.vel = B.dir.clone().multiplyScalar(fine ? rnd(2.0, 4.5) : rnd(0.6, 1.8)) // mist blows through, drops fall close
+        .add(new THREE.Vector3(rnd(-0.8, 0.8), rnd(0.2, fine ? 0.8 : 1.6), rnd(-0.8, 0.8)));
+      p.userData.fade = fine ? 1.7 : 0.7; // mist vanishes fast, drops linger
+    } else {
+      p = new THREE.Mesh(new THREE.SphereGeometry(rnd(.025,.08), 5, 4),
+        new THREE.MeshBasicMaterial({ color:0x8a8a7a, transparent:true, opacity:.95 }));
+      p.position.copy(B.to);
+      p.userData.vel = new THREE.Vector3(rnd(-1,1), rnd(.5,2), rnd(-1,1));
+    }
     scene.add(p); impactParts.push(p);
   }
-  // wound mark on the animal
   if (isHit) {
+    const ud = animalGroup.userData;
     const local = animalGroup.worldToLocal(B.to.clone());
-    const wound = new THREE.Mesh(new THREE.SphereGeometry(animalGroup.userData.vitalR*0.42, 7, 6),
-      new THREE.MeshBasicMaterial({ color:0x7a0c0c }));
-    wound.position.copy(local);
-    animalGroup.add(wound);
+    // project the wound onto the hide: find the body surface on the side the shot came from
+    const bd = ud.bodyDims || { cx:0, cy:ud.size*0.6, rx:ud.size*0.5, ry:ud.size*0.3, rz:ud.size*0.25 };
+    const dxn = (local.x - bd.cx) / bd.rx, dyn = (local.y - bd.cy) / bd.ry;
+    const zf = Math.sqrt(Math.max(0.10, 1 - Math.min(0.9, dxn*dxn + dyn*dyn)));
+    const localDir = animalGroup.worldToLocal(B.to.clone().add(B.dir)).sub(local).normalize();
+    const entryZ = -Math.sign(localDir.z || 1) * bd.rz * zf * 1.02; // sits right on the skin
+    const wMat = new THREE.MeshBasicMaterial({ color:0x5a0808 });
+    // entry wound: tight dark hole with matted blood running down the hide
+    const entry = new THREE.Mesh(new THREE.SphereGeometry(ud.vitalR*0.28, 10, 8), wMat);
+    entry.position.set(local.x, local.y, entryZ);
+    entry.scale.set(1, 1, 0.35);
+    animalGroup.add(entry);
+    const streak = new THREE.Mesh(new THREE.SphereGeometry(ud.vitalR*0.15, 8, 6), wMat);
+    streak.position.set(local.x, local.y - ud.vitalR*0.5, entryZ * 0.96);
+    streak.scale.set(0.7, 2.4, 0.30);
+    animalGroup.add(streak);
+    // shotgun: a pattern of smaller pellet holes peppered around the main strike
+    if (weapon === 'shotgun') {
+      for (let i=0;i<6;i++) {
+        const pw = new THREE.Mesh(new THREE.SphereGeometry(ud.vitalR*rnd(0.08, 0.14), 8, 6), wMat);
+        const pa = rnd(0, Math.PI*2), pr = ud.vitalR * rnd(0.4, 1.1);
+        const px = local.x + Math.cos(pa)*pr, py = local.y + Math.sin(pa)*pr;
+        const pdx = (px - bd.cx)/bd.rx, pdy = (py - bd.cy)/bd.ry;
+        const pzf = Math.sqrt(Math.max(0.08, 1 - Math.min(0.9, pdx*pdx + pdy*pdy)));
+        pw.position.set(px, py, Math.sign(entryZ) * bd.rz * pzf * 1.02);
+        pw.scale.set(1, 1, 0.35);
+        animalGroup.add(pw);
+      }
+    }
+    // rifle rounds pass through: larger, ragged exit wound on the far side, bleeding heavier
+    if (weapon === 'rifle') {
+      const exMat = new THREE.MeshBasicMaterial({ color:0x6e0b0b });
+      const exit = new THREE.Mesh(new THREE.SphereGeometry(ud.vitalR*0.46, 10, 8), exMat);
+      exit.position.set(local.x + rnd(-0.04, 0.04)*ud.size, local.y - ud.vitalR*0.18, -entryZ);
+      exit.scale.set(1, 1.3, 0.35);
+      animalGroup.add(exit);
+      const streak2 = new THREE.Mesh(new THREE.SphereGeometry(ud.vitalR*0.18, 8, 6), exMat);
+      streak2.position.set(exit.position.x, local.y - ud.vitalR*0.85, -entryZ * 0.96);
+      streak2.scale.set(0.9, 2.8, 0.30);
+      animalGroup.add(streak2);
+      // and the spray carries on past — splatter on the ground downrange
+      for (let i=0;i<5;i++) {
+        const d = new THREE.Mesh(new THREE.CircleGeometry(rnd(0.05, 0.15) * Math.max(1, ud.size*0.7), 10),
+          new THREE.MeshBasicMaterial({ color:0x6e0b0b, transparent:true, opacity:0.7 }));
+        d.rotation.x = -Math.PI/2;
+        d.position.set(
+          B.to.x + B.dir.x * rnd(0.6, 2.8) + rnd(-0.4, 0.4),
+          0.03 + i*0.002,
+          B.to.z + B.dir.z * rnd(0.6, 2.8) + rnd(-0.4, 0.4));
+        scene.add(d); bloodBits.push(d);
+      }
+    }
   }
   if (r.pts >= 100)     animalAnim = { kind:'drop',    t:0 }; // heart: drops on the spot
   else if (r.pts >= 85) animalAnim = { kind:'stagger', t:0 }; // lungs: wobbles, then tips over
@@ -1740,7 +1879,7 @@ function girlfriendUpdate(dt, t) {
   if (!girlfriend) return;
   const gud = girlfriend.userData;
   const home = gud.home;
-  const goodCeleb = state === S.CELEB && celeb && !celeb.finale && SAD_CELEBS.indexOf(celeb.kind) === -1;
+  const goodCeleb = state === S.CELEB && celeb && SAD_CELEBS.indexOf(celeb.kind) === -1;
   if (goodCeleb) {
     const ct = celeb.t;
     const A0 = gud.arms[0].rotation, A1 = gud.arms[1].rotation;
@@ -1790,17 +1929,24 @@ function girlfriendUpdate(dt, t) {
         if (ct > due && ct < celeb.dur - 0.4) { celeb.kissN = (celeb.kissN || 0) + 1; kissSound(); }
         break;
       }
-      case 'lapjump': { // a running hop straight onto his lap
-        const k2 = Math.min(1, Math.max(0, (ct - 0.3) / 0.8));
-        if (!celeb.gStart) celeb.gStart = { x: girlfriend.position.x, z: girlfriend.position.z };
-        girlfriend.position.x = celeb.gStart.x + (1.38 - celeb.gStart.x) * k2;
-        girlfriend.position.z = celeb.gStart.z + (2.55 - celeb.gStart.z) * k2;
-        girlfriend.position.y = k2 < 1
-          ? hunterY + Math.sin(k2*Math.PI) * 0.7 + 0.60 * k2
-          : hunterY + 0.60 + Math.abs(Math.sin(ct*6)) * 0.04;
-        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * k2;
-        girlfriend.rotation.x = -0.3 * k2;
-        if (k2 >= 1 && !celeb.gfSnd) { celeb.gfSnd = true; giggleSound(); setTimeout(kissSound, 500); }
+      case 'cheekkiss': { // walks over, bends at the waist, plants one on his cheek
+        const kf = Math.min(1, ct / 0.7);
+        girlfriend.position.x = home.x + (1.42 - home.x) * kf;
+        girlfriend.position.z = home.z + (2.52 - home.z) * kf;
+        girlfriend.position.y = hunterY;
+        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * kf;
+        let bend = 0;
+        if (ct > 0.7) bend = Math.min(1, (ct - 0.7) / 0.5);
+        if (ct > celeb.dur - 1.0) bend = Math.max(0, 1 - (ct - (celeb.dur - 1.0)) / 0.5); // straightens back up
+        girlfriend.rotation.z = 0.55 * bend;
+        A0.x = 0.5 * bend; A1.x = 0.5 * bend; // hands resting on him as she leans
+        if (bend >= 1 && !celeb.kissed) {
+          celeb.kissed = true;
+          kissSound();
+          setTimeout(giggleSound, 600);
+          if (celeb.finale) setTimeout(kissSound, 1400);
+        }
+        if (bend > 0.7 && hunterRefs) hunterRefs.headGrp.rotation.y = Math.min(0.4, hunterRefs.headGrp.rotation.y + dt*0.9); // he turns into it
         break;
       }
       default: { // 'hugkiss': the classic — comes in, wraps him up, two kisses
@@ -1814,8 +1960,6 @@ function girlfriendUpdate(dt, t) {
         if (ct > 1.5 && !celeb.kissed) { celeb.kissed = true; kissSound(); setTimeout(kissSound, 700); }
       }
     }
-  } else if (state === S.CELEB && celeb && celeb.finale) {
-    // finale: handled in celebUpdate — she's headed for his lap
   } else {
     // back to her spot beside him, cheering him on (standing quietly if he missed)
     const sad = state === S.CELEB && celeb && SAD_CELEBS.indexOf(celeb.kind) !== -1;
@@ -1854,15 +1998,16 @@ function startCeleb() {
   state = S.CELEB;
   const pts = B.result.pts;
   let kind;
-  if (pts >= 100)     kind = 'joint';   // reserved for perfection
+  if (pts >= 85)      kind = 'joint';   // lung shot or better earns a smoke
   else if (pts >= 50) kind = KILL_CELEBS[Math.floor(Math.random()*KILL_CELEBS.length)];
   else                kind = SAD_CELEBS[Math.floor(Math.random()*SAD_CELEBS.length)]; // it got away
-  const dur = { joint:6.2, rifleraise:3.0, fistpump:2.8, doublefist:3.0, wave:3.0, clap:2.8, hattip:2.6, spin360:3.4, wheelie:3.6, shrug:2.4, facepalm:2.6, headhang:2.8, armslam:2.8 }[kind];
-  celeb = { kind, t:0, dur, smokeT:0, fwT:0.3 };
+  const party = pts >= 100; // but only perfection gets the full blowout
+  const dur = { joint: party ? 6.2 : 4.4, rifleraise:3.0, fistpump:2.8, doublefist:3.0, wave:3.0, clap:2.8, hattip:2.6, spin360:3.4, wheelie:3.6, shrug:2.4, facepalm:2.6, headhang:2.8, armslam:2.8 }[kind];
+  celeb = { kind, t:0, dur, smokeT:0, fwT:0.3, party };
   // his girl picks her own reaction every time
-  const GF_CELEBS = ['hugkiss', 'jump', 'kissattack', 'lapjump', 'cheer', 'twirl'];
+  const GF_CELEBS = ['hugkiss', 'jump', 'kissattack', 'cheekkiss', 'cheer', 'twirl'];
   if (pts >= 50) celeb.gf = GF_CELEBS[Math.floor(Math.random() * GF_CELEBS.length)];
-  if (kind === 'joint') spawnParty(); // perfection deserves a party
+  if (kind === 'joint' && party) spawnParty(); // girls, champagne & fireworks: 100s only
   celebSound(kind);
 }
 function spawnSmoke(n, big) {
@@ -1902,11 +2047,13 @@ function celebUpdate(dt) {
         spawnSmoke(exhale ? 3 : 1, exhale);
         celeb.smokeT = exhale ? 0.10 : 0.30;
       }
-      // fireworks overhead — a real show
-      celeb.fwT -= dt;
-      if (celeb.fwT <= 0) { fireworkBurst(); celeb.fwT = rnd(0.25, 0.55); }
+      // fireworks overhead — only when the full party is on (100s and the finale)
+      if (celeb.party) {
+        celeb.fwT -= dt;
+        if (celeb.fwT <= 0) { fireworkBurst(); celeb.fwT = rnd(0.25, 0.55); }
+      }
       // champagne shower once the joint is lit
-      if (ct > 1.4 && !celeb.cork) { celeb.cork = true; corkPop(); }
+      if (celeb.party && ct > 1.4 && !celeb.cork) { celeb.cork = true; corkPop(); }
       if (celebParty && ct > 1.5 && ct < 5.2) {
         celebParty.children.forEach(girl => { if (girl.userData.bottle) sprayChampagne(girl); });
       }
@@ -1928,27 +2075,6 @@ function celebUpdate(dt) {
         ud.arms[0].rotation.z =  0.25 + Math.sin(ct*3.5 + ud.phase) * 0.45;
         ud.arms[1].rotation.z = -0.25 + Math.sin(ct*3.5 + ud.phase + 1.5) * 0.45;
       });
-      // season finale: his girl hops onto his lap, wiggles in, and giggles
-      if (celeb.finale && girlfriend && ct > 2.0) {
-        const k2 = Math.min(1, (ct - 2.0) / 0.9);
-        if (!celeb.gStart) celeb.gStart = { x: girlfriend.position.x, z: girlfriend.position.z };
-        const lapX = 1.38, lapY = hunterY + 0.60, lapZ = 2.55;
-        girlfriend.position.x = celeb.gStart.x + (lapX - celeb.gStart.x) * k2;
-        girlfriend.position.z = celeb.gStart.z + (lapZ - celeb.gStart.z) * k2;
-        girlfriend.position.y = k2 < 1
-          ? hunterY + Math.sin(k2 * Math.PI) * 0.8 + 0.60 * k2        // the hop
-          : lapY + Math.abs(Math.sin(ct*6)) * 0.045;                  // settling in
-        girlfriend.rotation.y = -Math.PI/2 + Math.sin(ct*3) * 0.12;   // face to face, wiggling
-        girlfriend.rotation.x = -0.3 * k2;                            // leaning back into him
-        girlfriend.rotation.z = Math.sin(ct*6) * 0.06;
-        if (k2 >= 1 && !celeb.giggled) {
-          celeb.giggled = true;
-          giggleSound(); kissSound();
-          setTimeout(giggleSound, 900);
-          setTimeout(() => { kissSound(); giggleSound(); }, 2000);
-        }
-        if (k2 >= 1 && hunterRefs) hunterRefs.headGrp.rotation.y = Math.min(0.5, hunterRefs.headGrp.rotation.y + dt*0.8); // his attention is all hers
-      }
       break;
     }
     case 'rifleraise': { // rifle hoisted high in both hands
@@ -2054,7 +2180,7 @@ function celebUpdate(dt) {
 // end-of-season blowout: the full joint-and-fireworks party, no matter the score
 function startFinale() {
   state = S.CELEB;
-  celeb = { kind:'joint', t:0, dur:6.2, smokeT:0, fwT:0.2, finale:true };
+  celeb = { kind:'joint', t:0, dur:6.2, smokeT:0, fwT:0.2, finale:true, party:true, gf:'cheekkiss' };
   spawnParty();
   celebSound('joint');
   cineEl.style.opacity = 1;
@@ -2559,7 +2685,7 @@ function tick() {
   impactParts.forEach(p => {
     p.position.addScaledVector(p.userData.vel, dt);
     p.userData.vel.y -= 3*dt;
-    p.material.opacity -= dt*0.7;
+    p.material.opacity -= dt * (p.userData.fade || 0.7);
   });
   for (let i = smokeParts.length-1; i >= 0; i--) {
     const p = smokeParts[i];
