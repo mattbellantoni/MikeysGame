@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.76</div>
+<div id="verBadge">v1.77</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -247,13 +247,17 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHei
 // keep the render target matched to the canvas's REAL on-screen size every frame —
 // mobile browser chrome (address bars) resizes the viewport without firing resize,
 // which stretched the canvas and pushed the crosshair off the true aim point
-let lastResizeAt = 0;
+let lastResizeAt = 0, prTrim = 1;
 function resizeToDisplay() {
   const w = canvas.clientWidth || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
   if (!w || !h) return;
-  const pr = Math.min(window.devicePixelRatio, 1.75);
-  const dw = Math.abs(canvas.width - w*pr), dh = Math.abs(canvas.height - h*pr);
+  // pixel budget: never ask the mobile GPU for more than ~4MP — oversized buffers get
+  // silently clamped on rotation, which paints only part of the canvas (black right half)
+  let pr = Math.min(window.devicePixelRatio, 1.75) * prTrim;
+  const budget = 4000000;
+  if (w * h * pr * pr > budget) pr = Math.sqrt(budget / (w * h));
+  const dw = Math.abs(canvas.width - Math.floor(w*pr)), dh = Math.abs(canvas.height - Math.floor(h*pr));
   if (dw <= 1 && dh <= 1) return;
   // throttle small reallocations while browser chrome animates — buffer thrash can kill the GL context
   const now = performance.now();
@@ -266,6 +270,14 @@ function resizeToDisplay() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  // verify the GPU actually granted the buffer; if it clamped us, back off and try again
+  const gl = renderer.getContext();
+  if (gl && !gl.isContextLost() &&
+      (gl.drawingBufferWidth < canvas.width - 4 || gl.drawingBufferHeight < canvas.height - 4)) {
+    prTrim = Math.max(0.4, prTrim * 0.85);
+    renderer.setPixelRatio(pr * 0.85);
+    renderer.setSize(w, h, false);
+  }
 }
 function onOrient() {
   // mobile browsers settle the new layout late after a rotation — resync repeatedly,
