@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mike's Big Hunt">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href='data:application/manifest+json,{"name":"Mike%27s Big Hunt","short_name":"Big Hunt","display":"fullscreen","orientation":"landscape","background_color":"%23000000","theme_color":"%23000000","start_url":"."}'>
 <title>Mike's Big Hunt</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
@@ -28,8 +32,8 @@
     #hud .score .sub { font-size:11px; }
   }
 
-  /* hint */
-  #hint { bottom:30px; left:0; right:0; text-align:center; color:#fff; font-size:19px; text-shadow:0 2px 8px rgba(0,0,0,.9); transition:opacity .4s; }
+  /* hint — retired: instructions live on the start screen only */
+  #hint { display:none; bottom:30px; left:0; right:0; text-align:center; color:#fff; font-size:19px; text-shadow:0 2px 8px rgba(0,0,0,.9); transition:opacity .4s; }
   #hint .big { font-size:23px; font-weight:bold; }
 
   /* Scope — centered on --cx/--cy, which JS pins to the true projected aim point */
@@ -43,7 +47,7 @@
   .xh.v { width:2px; height:64vmin; transform:translate(-50%,-50%); }
   .xh.dot { width:7px; height:7px; border-radius:50%; background:rgba(220,40,40,.95); transform:translate(-50%,-50%); box-shadow:0 0 6px rgba(255,60,60,.8); }
   #scopeInfo { position:absolute; left:50%; bottom:9%; transform:translateX(-50%); color:#cfe8cf; font-size:16px; letter-spacing:2px; text-shadow:0 0 8px #000; font-family:monospace; }
-  #fireHint { position:absolute; left:50%; top:13%; transform:translateX(-50%); color:#fff; font-size:17px; text-shadow:0 0 10px #000; opacity:.9; }
+  #fireHint { display:none; }
 
   /* cinematic bars */
   #cine { opacity:0; transition:opacity .3s; }
@@ -194,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.61</div>
+<div id="verBadge">v1.67</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -297,9 +301,9 @@ const ENVS = {
 
 // ---------- Weapons ----------
 const WEAPONS = {
-  rifle:   { label:'Rifle',   sway:1.0,  durBase:2.1, durDiv:160, arc:0,     scatter:false },
-  bow:     { label:'Bow',     sway:1.28, durBase:2.7, durDiv:110, arc:0.03,  scatter:false },
-  shotgun: { label:'Shotgun', sway:1.05, durBase:2.1, durDiv:160, arc:0.004, scatter:true }
+  rifle:   { label:'Rifle',   sway:1.0,  durBase:2.1, durDiv:160, arc:0,     scatter:false, windK:0.05, dropK:0.08 },
+  bow:     { label:'Bow',     sway:1.28, durBase:2.7, durDiv:110, arc:0.03,  scatter:false, windK:0.16, dropK:0.30 },
+  shotgun: { label:'Shotgun', sway:1.05, durBase:2.1, durDiv:160, arc:0.004, scatter:true,  windK:0.08, dropK:0.20 }
 };
 let weapon = 'rifle';
 
@@ -705,6 +709,25 @@ function buildHunter() {
   // camo cap
   P(headGrp, new THREE.SphereGeometry(0.12, 9, 6, 0, Math.PI*2, 0, Math.PI/2), camoB, -0.005, 0.045, 0);
   P(headGrp, new THREE.BoxGeometry(0.12, 0.018, 0.13), camoB, 0.10, 0.08, 0);
+  // the face rig: a mouth in the beard and brows over the aviators — so he can actually emote
+  const lipMat = new THREE.MeshStandardMaterial({ color:0xb05a50, roughness:.6 });
+  const smile = P(headGrp, new THREE.TorusGeometry(0.034, 0.009, 6, 12, Math.PI), lipMat, 0.108, -0.044, 0, 0, Math.PI/2, Math.PI);
+  const teeth = P(headGrp, new THREE.BoxGeometry(0.012, 0.020, 0.052), new THREE.MeshStandardMaterial({ color:0xf2efe6, roughness:.3 }), 0.104, -0.052, 0);
+  const frown = P(headGrp, new THREE.TorusGeometry(0.030, 0.008, 6, 12, Math.PI), lipMat, 0.108, -0.062, 0, 0, Math.PI/2, 0);
+  const lipFlat = P(headGrp, new THREE.BoxGeometry(0.010, 0.007, 0.046), lipMat, 0.110, -0.050, 0);
+  const browGeo = new THREE.BoxGeometry(0.014, 0.011, 0.038);
+  const browMat = Mat(0x141414);
+  const browL = P(headGrp, browGeo, browMat, 0.098, 0.088, 0.048);
+  const browR = P(headGrp, browGeo, browMat, 0.098, 0.088, -0.048);
+  function setFace(mood) {
+    smile.visible = teeth.visible = mood === 'happy';
+    frown.visible = mood === 'sad';
+    lipFlat.visible = mood === 'neutral';
+    browL.rotation.x = mood === 'happy' ? -0.18 : (mood === 'sad' ? 0.4 : 0);
+    browR.rotation.x = mood === 'happy' ? 0.18 : (mood === 'sad' ? -0.4 : 0);
+    browL.position.y = browR.position.y = 0.088 + (mood === 'happy' ? 0.012 : 0); // brows lift when he lights up
+  }
+  setFace('neutral');
   // the victory joint (hidden until a perfect heart shot)
   const joint = P(headGrp, new THREE.CylinderGeometry(0.011, 0.013, 0.10, 6), Mat(0xf2efe6), 0.155, -0.03, 0.01, 0, 0, -1.15);
   const jointTip = new THREE.Mesh(new THREE.SphereGeometry(0.015, 6, 5), new THREE.MeshBasicMaterial({ color:0xff7020 }));
@@ -758,7 +781,7 @@ function buildHunter() {
   const dirF = new THREE.Vector3(0,1,0).applyEuler(new THREE.Euler(-1.2, 0, -0.3));
   P(armFar, handG, skin, 0.07 + dirF.x*0.15, -0.08 + dirF.y*0.15, dirF.z*0.15);
 
-  hunterRefs = { armNear, armFar, headGrp, joint, jointTip, rifle: rifleGroup, wheels,
+  hunterRefs = { armNear, armFar, headGrp, joint, jointTip, rifle: rifleGroup, wheels, setFace,
     weapons: { rifle: wRifle, shotgun: wShot, bow: wBow },
     rifle0: { pos: rifleGroup.position.clone(), rot: rifleGroup.rotation.clone() } };
 
@@ -971,7 +994,7 @@ function buildWorld(level) {
 
   // his girlfriend — the redhead at his side, every hunt, every stand
   if (!girlfriend) {
-    girlfriend = buildGirl(1, { hair:0xc8401a, kini:0x2ae8a0, skin:0xf0cfa8, iris:0x3aa05a }); // redhead, green eyes — one of a kind
+    girlfriend = buildGirl(1, { hair:0xc8401a, skin:0xf0cfa8, iris:0x3aa05a, casual:true }); // redhead, green eyes, denim & tube top
     scene.add(girlfriend);
   }
   const gb = gfBase();
@@ -1018,10 +1041,22 @@ function loadSfx() {
     sfx[k] = a;
   });
 }
+let fsTried = false;
+function tryFullscreen() {
+  // hides the browser bar where supported (Android/Chrome, iPad); iPhone needs Add to Home Screen
+  if (fsTried || document.fullscreenElement) return;
+  fsTried = true;
+  const el = document.documentElement;
+  try {
+    if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  } catch (e) {}
+}
 function initAudio() {
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
   if (actx && actx.state === 'suspended') actx.resume();
   loadSfx();
+  tryFullscreen();
 }
 function noiseBurst(st, dur, lpFreq, vol, decayPow) {
   const t = actx.currentTime + st;
@@ -1220,6 +1255,8 @@ let flybyT = 0;
 const FLYBY_DUR = 4.5;
 let stalk = null;   // the push toward the quarry
 let spookT = 0;
+let wind = null;    // each hunt has its own wind
+let hudDistT = 0;
 let state = S.START;
 let introT = 0;
 const INTRO_DUR = 4.2;
@@ -1248,7 +1285,8 @@ const resultPanel = $('resultPanel'), startScreen = $('startScreen');
 function setHUD() {
   const L = LEVELS[levelIdx];
   $('lvlName').textContent = 'Hunt ' + (levelIdx+1) + ': ' + L.name;
-  $('lvlSub').textContent = ENVS[L.env].label + ' • ' + L.dist + ' yds • ' + WEAPONS[weapon].label;
+  $('lvlSub').innerHTML = ENVS[L.env].label + ' • <span id="lvlDist">' + L.dist + '</span> yds • '
+    + WEAPONS[weapon].label + (wind ? ' • ' + windLabel() : '');
   $('totScore').textContent = totalScore + ' pts';
   $('lvlCount').textContent = 'Hunt ' + (levelIdx+1) + ' of ' + LEVELS.length;
   $('bestScore').textContent = sessionBest > 0 ? 'Beat: ' + sessionBest + ' pts' : '';
@@ -1264,6 +1302,10 @@ function loadLevel(i, skipFly) {
     pathDur: rnd(36, 50)          // slow, steady roll
   };
   $('spookMsg').style.display = 'none';
+  // the wind: direction + speed, stiffer as the season goes on
+  wind = { dir: rnd(0, Math.PI*2), speed: rnd(1, 4 + Math.min(14, i * 0.6)) };
+  wind.x = Math.sin(wind.dir) * wind.speed * 0.1; // lateral push across the lane
+  wind.scent = Math.cos(wind.dir);                // +1 carries your scent straight to the herd
   buildWorld(LEVELS[i]);
   animalAnim = null;
   if (bulletMesh) { scene.remove(bulletMesh); bulletMesh = null; }
@@ -1301,9 +1343,11 @@ function startSeasonOpener() {
   state = S.INTRO; introT = 0;
   hintEl.style.opacity = 0;
   spawnParty();
+  if (hunterRefs) hunterRefs.setFace('happy'); // grinning through the send-off
   if (actx) { celebSound('fistpump'); setTimeout(giggleSound, 700); }
 }
 function endIntro() {
+  if (hunterRefs) hunterRefs.setFace('neutral');
   clearParty(); // from here on it's just him and his girl — until he earns the party back
   state = S.FLYBY; flybyT = 0;
   cineEl.style.opacity = 1;
@@ -1351,9 +1395,26 @@ function showSpooked() {
   resultPanel.classList.remove('hidden');
   dingSound(false);
 }
-// live range — shrinks as she pushes him closer
+// live range — shrinks as the chair rolls closer
 function curDist() {
   return animalGroup ? hunterGroup.position.distanceTo(animalGroup.position) : LEVELS[levelIdx].dist;
+}
+function windLabel() {
+  if (!wind) return '';
+  const a = Math.atan2(Math.cos(wind.dir), Math.sin(wind.dir)); // screen-space: right = +x, up = downrange
+  const idx = (Math.round((a + Math.PI) / (Math.PI/4))) % 8;
+  return 'Wind ' + wind.speed.toFixed(0) + ' mph ' + ['←','↙','↓','↘','→','↗','↑','↖'][idx];
+}
+// wind drift + gravity drop, folded into the visible hold — grows with range and season
+function ballisticBias() {
+  if (!wind) return new THREE.Vector2(0, 0);
+  const d = curDist() / 100;
+  const WP = WEAPONS[weapon];
+  const lvlF = 0.4 + levelIdx * 0.03;
+  return new THREE.Vector2(
+    wind.x * d * d * WP.windK * lvlF * 10,  // lateral drift
+    -d * d * WP.dropK * lvlF * 8            // bullet drop pulls the hold low
+  );
 }
 
 // ---------- Aim model ----------
@@ -1370,7 +1431,9 @@ function aimOffset(t) {
   const sp = 1.12 + levelIdx * 0.05; // sway speed grows slightly
   const x = A * (0.62*Math.sin(t*1.1*sp + aimPhase) + 0.38*Math.sin(t*2.3*sp + aimPhase*1.7));
   const y = A * (0.62*Math.sin(t*0.9*sp + aimPhase*2.3) + 0.38*Math.sin(t*1.9*sp + aimPhase*0.6));
-  return new THREE.Vector2(x, y);
+  // wind and gravity shift the whole hold — what you see in the sight is still where it lands
+  const b = ballisticBias();
+  return new THREE.Vector2(x + b.x, y + b.y);
 }
 function scopedFov() {
   const span = animalGroup.userData.size * 5 + aimAmplitude()*4;
@@ -1796,6 +1859,10 @@ function buildGirl(i, force) {
   const kini = new THREE.MeshStandardMaterial({ color: (force && force.kini) || kinis[i % kinis.length], roughness:.78 });
   const hair = new THREE.MeshStandardMaterial({ color: (force && force.hair) || hairs[i % hairs.length], roughness:.72 });
   const heel = new THREE.MeshStandardMaterial({ color:0x1a1a1a, roughness:.45 });
+  // casual outfit: denim pants + tube top (the girlfriend's look)
+  const casual = !!(force && force.casual);
+  const pantM = casual ? new THREE.MeshStandardMaterial({ color:0x3f5a7d, roughness:.85 }) : null;
+  const topM  = casual ? new THREE.MeshStandardMaterial({ color:0xf4f0ea, roughness:.8 })  : null;
   // ---- one continuous lathed body: hips through bust as a single smooth hourglass surface ----
   const torsoPts = [
     [0.055,0.70],[0.125,0.745],[0.163,0.805],[0.158,0.865],[0.118,0.94],[0.090,1.01],
@@ -1811,40 +1878,52 @@ function buildGirl(i, force) {
     [0.067,0.60],[0.070,0.68],[0.058,0.745]
   ].map(p => new THREE.Vector2(p[0], p[1]));
   for (const s of [-1,1]) {
-    P(g, new THREE.LatheGeometry(legPts, 20), skin, s*0.078, 0, 0.004, 0, 0, s*0.035);
+    P(g, new THREE.LatheGeometry(legPts, 20), casual ? pantM : skin, s*0.078, 0, 0.004, 0, 0, s*0.035);
     const hl = P(g, new THREE.SphereGeometry(0.05, 10, 8), heel, s*0.083, 0.028, 0.03);
-    hl.scale.set(0.62, 0.5, 1.2); // sleek heels
+    hl.scale.set(0.62, 0.5, 1.2); // sleek heels / shoes
   }
-  // bikini bottom: front and back coverage, with string ties over the hips
-  const btm = P(g, new THREE.SphereGeometry(0.170, 24, 18), kini, 0, 0.805, -0.004);
-  btm.scale.set(0.84, 0.55, 0.84); // narrower at the sides so the hip shows
-  for (const s of [-1,1]) {
-    // string curves over the hip, hugging the skin from front panel to back
-    const strPts = [];
-    for (let k = 0; k <= 4; k++) {
-      const th = (0.12 + 0.76 * (k/4)) * Math.PI;        // front edge → over the hip crest → back edge
-      const sag = Math.sin((k/4) * Math.PI) * 0.010;     // eases down over the crest like fabric under tension
-      strPts.push(new THREE.Vector3(Math.sin(th) * 0.170 * s, 0.852 - sag, Math.cos(th) * 0.137));
+  if (casual) {
+    // pants: full hip coverage with a waistband
+    const seat = P(g, new THREE.SphereGeometry(0.170, 24, 18), pantM, 0, 0.805, -0.004);
+    seat.scale.set(0.98, 0.58, 0.88);
+    P(g, new THREE.CylinderGeometry(0.135, 0.130, 0.05, 18), pantM, 0, 0.935, 0).scale.z = 0.84;
+  } else {
+    // bikini bottom: front and back coverage, with string ties over the hips
+    const btm = P(g, new THREE.SphereGeometry(0.170, 24, 18), kini, 0, 0.805, -0.004);
+    btm.scale.set(0.84, 0.55, 0.84); // narrower at the sides so the hip shows
+    for (const s of [-1,1]) {
+      // string curves over the hip, hugging the skin from front panel to back
+      const strPts = [];
+      for (let k = 0; k <= 4; k++) {
+        const th = (0.12 + 0.76 * (k/4)) * Math.PI;        // front edge → over the hip crest → back edge
+        const sag = Math.sin((k/4) * Math.PI) * 0.010;     // eases down over the crest like fabric under tension
+        strPts.push(new THREE.Vector3(Math.sin(th) * 0.170 * s, 0.852 - sag, Math.cos(th) * 0.137));
+      }
+      P(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(strPts), 16, 0.0075, 7), kini, 0, 0, 0);
+      P(g, new THREE.SphereGeometry(0.014, 8, 6), kini, s*0.166, 0.846, 0.045); // little side knot
     }
-    P(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(strPts), 16, 0.0075, 7), kini, 0, 0, 0);
-    P(g, new THREE.SphereGeometry(0.014, 8, 6), kini, s*0.166, 0.846, 0.045); // little side knot
   }
-  // bikini top: round full cups over a DD bust — close-set, deep cleavage line between
+  // the top: bikini cups for the squad, a strapless tube top for the casual outfit
   for (const s of [-1,1]) {
-    const bst = P(g, new THREE.SphereGeometry(0.105, 22, 17), skin, s*0.062, 1.175, 0.055, 0.18, 0, s*-0.08);
+    const bst = P(g, new THREE.SphereGeometry(0.105, 22, 17), casual ? topM : skin, s*0.062, 1.175, 0.055, 0.18, 0, s*-0.08);
     bst.scale.set(0.96, 0.92, 0.85); // the bust itself, full and round
-    const cup = P(g, new THREE.SphereGeometry(0.098, 22, 17), kini, s*0.066, 1.163, 0.072, 0.30, 0, s*-0.10);
-    cup.scale.set(0.95, 0.85, 0.78); // cup covering the lower two-thirds, skin above
+    const cup = P(g, new THREE.SphereGeometry(0.098, 22, 17), casual ? topM : kini, s*0.066, 1.163, 0.072, 0.30, 0, s*-0.10);
+    cup.scale.set(0.95, 0.85, 0.78);
   }
-  // halter strings up to the neck
-  for (const s of [-1,1]) P(g, new THREE.CylinderGeometry(0.005, 0.005, 0.13, 6), kini, s*0.038, 1.272, 0.055, -0.5, 0, s*0.42);
-  // under-band curving across the ribs, hugging the skin
-  const bandPts = [];
-  for (let k = 0; k <= 4; k++) {
-    const th = (-0.42 + 0.84 * (k/4)) * Math.PI;
-    bandPts.push(new THREE.Vector3(Math.sin(th) * 0.112, 1.152, Math.cos(th) * 0.092));
+  if (casual) {
+    // tube top band wrapping the sides and back — no straps
+    P(g, new THREE.CylinderGeometry(0.116, 0.110, 0.17, 18), topM, 0, 1.172, 0).scale.z = 0.84;
+  } else {
+    // halter strings up to the neck
+    for (const s of [-1,1]) P(g, new THREE.CylinderGeometry(0.005, 0.005, 0.13, 6), kini, s*0.038, 1.272, 0.055, -0.5, 0, s*0.42);
+    // under-band curving across the ribs, hugging the skin
+    const bandPts = [];
+    for (let k = 0; k <= 4; k++) {
+      const th = (-0.42 + 0.84 * (k/4)) * Math.PI;
+      bandPts.push(new THREE.Vector3(Math.sin(th) * 0.112, 1.152, Math.cos(th) * 0.092));
+    }
+    P(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(bandPts), 14, 0.007, 6), kini, 0, 0, 0);
   }
-  P(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(bandPts), 14, 0.007, 6), kini, 0, 0, 0);
   // soft shoulders, neck, head — anime proportions
   for (const s of [-1,1]) P(g, new THREE.SphereGeometry(0.042, 12, 9), skin, s*0.115, 1.285, 0);
   P(g, new THREE.CylinderGeometry(0.030, 0.036, 0.09, 12), skin, 0, 1.33, 0);
@@ -2149,13 +2228,18 @@ function animateDog(dt, t) {
     dog.rotation.y += Math.atan2(Math.sin(tr - dog.rotation.y), Math.cos(tr - dog.rotation.y)) * Math.min(1, dt*6);
     moving = true;
   } else if (dogState === 'fetch' && dogTargetA && d <= arrive + 0.05) {
-    // scoops the bird up
-    dogTargetA.visible = false;
-    if (dogTargetA.userData.blob) dogTargetA.userData.blob.visible = false;
-    dogCarry = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), FurMat(0x8a5a2a));
-    dogCarry.scale.set(1.6, 0.8, 0.9);
-    dogCarry.position.set(0.62, 0.58, 0);
-    dog.add(dogCarry);
+    // lifts the real animal — feathers, fur, and the wound where it was hit
+    const a = dogTargetA;
+    if (a.userData.blob) a.userData.blob.visible = false;
+    if (a.parent) a.parent.remove(a);
+    const carrier = new THREE.Group();
+    a.position.set(0, -(a.userData.size || 0.4) * 0.42, 0);
+    a.rotation.set(0.5, Math.PI/2, 0); // slung across the mouth, hanging limp
+    carrier.add(a);
+    carrier.position.set(0.52, 0.62, 0);
+    carrier.rotation.z = -0.15;
+    dog.add(carrier);
+    dogCarry = carrier;
     dogState = 'return';
     ud.run = true;
     barkSound();
@@ -2210,6 +2294,7 @@ function startCeleb() {
   const GF_CELEBS = ['hugkiss', 'jump', 'kissattack', 'cheekkiss', 'cheer', 'twirl'];
   if (pts >= 50) celeb.gf = GF_CELEBS[Math.floor(Math.random() * GF_CELEBS.length)];
   if (kind === 'joint' && party) spawnParty(); // girls, champagne & fireworks: 100s only
+  if (hunterRefs) hunterRefs.setFace(pts >= 50 ? 'happy' : 'sad'); // the grin says it all
   celebSound(kind);
 }
 function spawnSmoke(n, big) {
@@ -2397,18 +2482,25 @@ function celebUpdate(dt) {
 // end-of-season blowout: the full joint-and-fireworks party, no matter the score
 function startFinale() {
   state = S.CELEB;
-  celeb = { kind:'joint', t:0, dur:6.2, smokeT:0, fwT:0.2, finale:true, party:true, gf:'cheekkiss' };
+  celeb = { kind:'joint', t:0, dur:6.2, smokeT:0, fwT:0.2, finale:true, party:true, gf:'cheekkiss', ry0: hunterGroup.rotation.y };
   spawnParty();
+  if (hunterRefs) hunterRefs.setFace('happy');
   celebSound('joint');
   cineEl.style.opacity = 1;
 }
 function endCeleb() {
   const H = hunterRefs;
-  // the held trophy comes down and rests beside the chair
+  // the held trophy comes down and is laid out beside the chair, on its side
   if (dogCarry && H && dogCarry.parent === H.armFar) {
     H.armFar.remove(dogCarry);
     const hx2 = hunterGroup.position.x + 0.55, hz2 = hunterGroup.position.z + 0.4;
-    dogCarry.position.set(hx2, groundY(hx2, hz2) + 0.08, hz2);
+    dogCarry.position.set(hx2, groundY(hx2, hz2) + 0.04, hz2);
+    dogCarry.rotation.set(0, rnd(0, Math.PI*2), 0);
+    const tro = dogCarry.children[0];
+    if (tro) {
+      tro.position.set(0, (tro.userData && tro.userData.size ? tro.userData.size * 0.12 : 0.05), 0);
+      tro.rotation.set(Math.PI/2 * 0.95, 0, 0); // resting on its side, wound up
+    }
     scene.add(dogCarry);
     bloodBits.push(dogCarry); // cleared with the level
     dogCarry = null;
@@ -2420,6 +2512,7 @@ function endCeleb() {
   H.rifle.position.copy(H.rifle0.pos);
   H.rifle.rotation.copy(H.rifle0.rot);
   H.joint.visible = H.jointTip.visible = false;
+  H.setFace('neutral'); // game face back on
   if (celebParty) { scene.remove(celebParty); celebParty = null; }
   if (girlfriend) { // reset her pose for the next appearance
     const gb = gfBase();
@@ -2573,7 +2666,7 @@ function pressStart(y) {
     $('aimRifle').style.display = weapon === 'rifle' ? 'block' : 'none';
     $('aimBow').style.display = weapon === 'bow' ? 'block' : 'none';
     $('aimShot').style.display = weapon === 'shotgun' ? 'block' : 'none';
-    $('scopeInfo').textContent = Math.round(curDist()) + ' YDS • ' + WEAPONS[weapon].label.toUpperCase() + ' • ' + LEVELS[levelIdx].name.toUpperCase()
+    $('scopeInfo').textContent = Math.round(curDist()) + ' YDS • ' + windLabel().toUpperCase() + ' • ' + WEAPONS[weapon].label.toUpperCase() + ' • ' + LEVELS[levelIdx].name.toUpperCase()
       + (animals.length > 1 ? ' • TARGET ' + (targetIdx+1) + '/' + animals.length + ' (re-aim to switch)' : '');
   }
 }
@@ -2657,13 +2750,19 @@ function introCamera() {
   camera.updateProjectionMatrix();
 }
 function celebCamera() {
-  // hunter faces +x; pull around to see his face — wider when the party's on
+  // square in front of him, whichever way the chair points — his face fills the shot
   const party = celeb.kind === 'joint';
   const hp = hunterGroup.position;
-  const c = new THREE.Vector3(hp.x, hp.y + (party ? 1.05 : 1.18), hp.z);
-  camera.fov = party ? 52 : 40;
-  camera.position.set(c.x + (party ? 3.6 : 2.1), hp.y + (party ? 1.9 : 1.45), c.z + 0.55 + Math.sin(celeb.t*0.5)*0.2);
-  camera.lookAt(c);
+  const ry = celeb.ry0 !== undefined ? celeb.ry0 : hunterGroup.rotation.y;
+  const fx = Math.cos(ry), fz = -Math.sin(ry);
+  const dist = party ? 3.4 : 1.9;
+  camera.fov = party ? 50 : 34; // tight on the face for solo celebrations
+  camera.position.set(
+    hp.x + fx * dist - fz * Math.sin(celeb.t*0.5) * 0.25,
+    hp.y + (party ? 1.8 : 1.32),
+    hp.z + fz * dist + fx * Math.sin(celeb.t*0.5) * 0.25
+  );
+  camera.lookAt(hp.x, hp.y + (party ? 1.0 : 1.2), hp.z); // straight at his face
   camera.updateProjectionMatrix();
 }
 function idleCamera(t) {
@@ -2889,6 +2988,14 @@ function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
+  // live range in the HUD as the chair closes the distance
+  hudDistT -= dt;
+  if (hudDistT <= 0) {
+    hudDistT = 0.25;
+    const el = document.getElementById('lvlDist');
+    if (el && animalGroup && hunterGroup) el.textContent = Math.round(curDist());
+  }
+
   // weapon selector only while lining up the next shot
   const showWsel = state === S.IDLE;
   if (showWsel !== wselShown) {
@@ -2983,8 +3090,10 @@ function tick() {
       const dyaw = Math.atan2(Math.sin(tr - hunterGroup.rotation.y), Math.cos(tr - hunterGroup.rotation.y));
       hunterGroup.rotation.y += dyaw * Math.min(1, dt * 3);
     }
-    // push too deep and they wind you — never inside the first 5 seconds
-    if (stalk.moveT > 5 && u > stalk.frac) {
+    // push too deep and they wind you — never inside the first 5 seconds.
+    // a tailwind carries your scent to the herd; a headwind hides you.
+    const windAdj = wind ? 1 - 0.22 * wind.scent * Math.min(1, wind.speed / 10) : 1;
+    if (stalk.moveT > 5 && u > stalk.frac * windAdj) {
       stalk.spooked = true;
       triggerSpook();
     }
