@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.78</div>
+<div id="verBadge">v1.81</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -1175,7 +1175,10 @@ function buildWorld(level) {
   dog.rotation.set(0, 0, 0);
   dogState = 'heel';
   dogTargetA = null;
+  dogQueue = [];
   if (dogCarry) { if (dogCarry.parent) dogCarry.parent.remove(dogCarry); dogCarry = null; }
+  heldGame.forEach(c => { if (c.parent) c.parent.remove(c); });
+  heldGame = [];
 }
 // her stage mark beside the chair — she only appears for the show
 function gfBase() {
@@ -1961,8 +1964,67 @@ function impact() {
     dogTargetA = animalGroup;
     dogState = 'fetch';
   }
-  // a gunshot scatters the rest of the herd — a silent arrow doesn't
-  if (weapon !== 'bow') animals.forEach(a => { if (a !== animalGroup) a.userData.spooked = true; });
+  // rifle rounds keep going: any herd-mate standing on the trajectory beyond the target drops too
+  B.double = false;
+  if (weapon === 'rifle' && r.pts >= 50) {
+    const span = B.from.distanceTo(B.to);
+    animals.forEach(a => {
+      if (a === animalGroup || a.userData.dead2) return;
+      const chest = a.position.clone(); chest.y += a.userData.size * 0.6;
+      const v = chest.sub(B.from);
+      const tA = v.dot(B.dir);
+      if (tA < span * 0.99 || tA > span + 70) return; // must be in line BEYOND the first animal
+      const perp = v.sub(B.dir.clone().multiplyScalar(tA)).length();
+      if (perp > a.userData.vitalR * 1.6) return;
+      a.userData.dead2 = true; // the same bullet takes it
+      B.double = true;
+      if (FETCHABLE.indexOf(LEVELS[levelIdx].type) !== -1 && dog) dogQueue.push(a); // he'll make a second trip
+      const hitP = B.from.clone().addScaledVector(B.dir, tA);
+      quickWounds(a, hitP);
+      for (let i=0;i<8;i++) {
+        const p = new THREE.Mesh(new THREE.SphereGeometry(rnd(0.02, 0.05), 5, 4),
+          new THREE.MeshBasicMaterial({ color:0x9a1010, transparent:true, opacity:.95 }));
+        p.position.copy(hitP);
+        p.userData.vel = B.dir.clone().multiplyScalar(rnd(1, 3)).add(new THREE.Vector3(rnd(-0.7, 0.7), rnd(0.3, 1.4), rnd(-0.7, 0.7)));
+        p.userData.fade = 1.2;
+        scene.add(p); impactParts.push(p);
+      }
+      setTimeout(() => animalCry(LEVELS[levelIdx].type, 0.85), 180);
+    });
+    if (B.double) {
+      B.result = Object.assign({}, r, {
+        pts: r.pts + 25,
+        title: r.title + ' — DOUBLE!',
+        desc: r.desc + ' And the round carried clean through — a second animal drops on the same bullet. +25 bonus.'
+      });
+    }
+  }
+  // a gunshot scatters the rest of the herd — a silent arrow doesn't (and the doubled one stays down)
+  if (weapon !== 'bow') animals.forEach(a => { if (a !== animalGroup && !a.userData.dead2) a.userData.spooked = true; });
+}
+// the second animal on the line: entry and exit wounds, projected onto its hide
+function quickWounds(a, worldPoint) {
+  const ud = a.userData;
+  const local = a.worldToLocal(worldPoint.clone());
+  const bd = ud.bodyDims || { cx:0, cy:ud.size*0.6, rx:ud.size*0.5, ry:ud.size*0.3, rz:ud.size*0.25 };
+  const dxn = (local.x - bd.cx)/bd.rx, dyn = (local.y - bd.cy)/bd.ry;
+  const zf = Math.sqrt(Math.max(0.10, 1 - Math.min(0.9, dxn*dxn + dyn*dyn)));
+  const localDir = a.worldToLocal(worldPoint.clone().add(B.dir)).sub(local).normalize();
+  const eZ = -Math.sign(localDir.z || 1) * bd.rz * zf * 1.02;
+  const en = new THREE.Mesh(new THREE.SphereGeometry(ud.vitalR*0.26, 8, 6), new THREE.MeshBasicMaterial({ color:0x5a0808 }));
+  en.position.set(local.x, local.y, eZ); en.scale.set(1, 1, 0.35); a.add(en);
+  const ex = new THREE.Mesh(new THREE.SphereGeometry(ud.vitalR*0.42, 8, 6), new THREE.MeshBasicMaterial({ color:0x6e0b0b }));
+  ex.position.set(local.x, local.y - ud.vitalR*0.15, -eZ); ex.scale.set(1, 1.2, 0.35); a.add(ex);
+}
+// the doubled animal drops where it stood
+function deadFall(a, dt) {
+  const ud = a.userData;
+  ud.d2t = (ud.d2t || 0) + dt;
+  const k = Math.min(1, ud.d2t / 0.6);
+  const e = 1 - Math.pow(1-k, 3);
+  a.rotation.x = e * Math.PI/2 * 0.95;
+  a.position.y = groundY(a.position.x, a.position.z) - e * ud.size * 0.18;
+  (ud.legs || []).forEach((l, i) => { l.rotation.z = Math.sin(ud.d2t*17 + i*1.9) * 0.25 * Math.max(0, 1 - ud.d2t/1.5); });
 }
 
 // ---------- Shot placement diagram (species-accurate, all facing left) ----------
@@ -2293,11 +2355,16 @@ function buildGirl(i, force) {
 }
 function spawnParty() {
   celebParty = new THREE.Group();
-  const spots = [[-1.3,-1.1],[-1.7,0.1],[-1.2,1.3],[-0.2,-1.8],[-0.1,1.9]];
+  // lay the party out in the CAMERA's frame: an arc behind and beside him, nobody blocking the lens
+  const ry = (celeb && celeb.ry0 !== undefined) ? celeb.ry0 : hunterGroup.rotation.y;
+  const fx = Math.cos(ry), fz = -Math.sin(ry);  // toward the camera
+  const rxv = -fz, rzv = fx;                    // his flank
+  const faceCam = Math.atan2(fx, fz);
+  const spots = [[-1.4, -1.3], [-1.9, -0.2], [-1.5, 1.2], [-0.4, -2.0], [-0.3, 2.0]]; // (depth, side)
   spots.forEach((sp, i) => {
     const girl = buildGirl(i);
-    girl.position.set(sp[0], 0, sp[1]);
-    girl.rotation.y = Math.PI/2 + rnd(-0.4, 0.4); // facing the man of the hour
+    girl.position.set(sp[0]*fx + sp[1]*rxv, 0, sp[0]*fz + sp[1]*rzv);
+    girl.rotation.y = faceCam + rnd(-0.3, 0.3); // all playing to the camera
     celebParty.add(girl);
   });
   celebParty.position.set(hunterGroup.position.x, hunterGroup.position.y - (LEVELS[levelIdx].stand ? 0 : 0.02), hunterGroup.position.z);
@@ -2382,6 +2449,12 @@ function girlfriendUpdate(dt, t) {
     const ct = celeb.t;
     const A0 = gud.arms[0].rotation, A1 = gud.arms[1].rotation;
     const k = Math.min(1, ct / 0.8);
+    // approach in the camera's frame, whatever way the chair points
+    const ry0 = celeb.ry0 !== undefined ? celeb.ry0 : hunterGroup.rotation.y;
+    const fx = Math.cos(ry0), fz = -Math.sin(ry0), rxv = -fz, rzv = fx;
+    const spotX = (fwd, side) => hp.x + fwd*fx + side*rxv;
+    const spotZ = (fwd, side) => hp.z + fwd*fz + side*rzv;
+    const faceHim = Math.atan2(-fx, -fz);
     switch (celeb.gf) {
       case 'jump': { // bouncing on the spot, arms to the sky
         const hop = Math.abs(Math.sin(ct*6));
@@ -2407,9 +2480,9 @@ function girlfriendUpdate(dt, t) {
           A0.x = -1.2; A1.x = 1.2; // arms out wide
         } else {
           const k2 = Math.min(1, (ct - 1.5) / 0.5);
-          girlfriend.rotation.y = -Math.PI/2;
-          girlfriend.position.x = home.x + ((hp.x + 0.45) - home.x) * k2;
-          girlfriend.position.z = home.z + ((hp.z + 0.22) - home.z) * k2;
+          girlfriend.rotation.y = faceHim;
+          girlfriend.position.x = home.x + (spotX(0.45, 0.22) - home.x) * k2;
+          girlfriend.position.z = home.z + (spotZ(0.45, 0.22) - home.z) * k2;
           girlfriend.rotation.z = 0.30 * k2;
           A0.x = 0.95 * k2; A1.x = 0.95 * k2;
           if (!celeb.gfSnd && k2 >= 1) { celeb.gfSnd = true; kissSound(); }
@@ -2418,9 +2491,9 @@ function girlfriendUpdate(dt, t) {
       }
       case 'kissattack': { // rushes in and covers him in kisses
         const kf = Math.min(1, ct / 0.45);
-        girlfriend.position.x = home.x + ((hp.x + 0.43) - home.x) * kf;
-        girlfriend.position.z = home.z + ((hp.z + 0.18) - home.z) * kf;
-        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * kf;
+        girlfriend.position.x = home.x + (spotX(0.43, 0.18) - home.x) * kf;
+        girlfriend.position.z = home.z + (spotZ(0.43, 0.18) - home.z) * kf;
+        girlfriend.rotation.y = home.rotY + (faceHim - home.rotY) * kf;
         girlfriend.rotation.z = 0.34 * kf + (ct > 0.5 ? Math.abs(Math.sin(ct*8)) * 0.10 : 0); // rapid-fire pecks
         A0.x = 0.9 * kf; A1.x = 0.9 * kf; // hands holding his face
         const due = 0.7 + (celeb.kissN || 0) * 0.5;
@@ -2429,10 +2502,10 @@ function girlfriendUpdate(dt, t) {
       }
       case 'cheekkiss': { // walks over, bends at the waist, plants one on his cheek
         const kf = Math.min(1, ct / 0.7);
-        girlfriend.position.x = home.x + ((hp.x + 0.37) - home.x) * kf;
-        girlfriend.position.z = home.z + ((hp.z + 0.12) - home.z) * kf;
+        girlfriend.position.x = home.x + (spotX(0.37, 0.12) - home.x) * kf;
+        girlfriend.position.z = home.z + (spotZ(0.37, 0.12) - home.z) * kf;
         girlfriend.position.y = hp.y;
-        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * kf;
+        girlfriend.rotation.y = home.rotY + (faceHim - home.rotY) * kf;
         let bend = 0;
         if (ct > 0.7) bend = Math.min(1, (ct - 0.7) / 0.5);
         if (ct > celeb.dur - 1.0) bend = Math.max(0, 1 - (ct - (celeb.dur - 1.0)) / 0.5); // straightens back up
@@ -2448,10 +2521,10 @@ function girlfriendUpdate(dt, t) {
         break;
       }
       default: { // 'hugkiss': the classic — comes in, wraps him up, two kisses
-        girlfriend.position.x = home.x + ((hp.x + 0.45) - home.x) * k;
-        girlfriend.position.z = home.z + ((hp.z + 0.22) - home.z) * k;
+        girlfriend.position.x = home.x + (spotX(0.45, 0.22) - home.x) * k;
+        girlfriend.position.z = home.z + (spotZ(0.45, 0.22) - home.z) * k;
         girlfriend.position.y = hp.y;
-        girlfriend.rotation.y = home.rotY + (-Math.PI/2 - home.rotY) * k;
+        girlfriend.rotation.y = home.rotY + (faceHim - home.rotY) * k;
         girlfriend.rotation.z = 0.30 * k + (ct > 1.4 ? Math.abs(Math.sin(ct*3)) * 0.06 : 0);
         A0.x = 0.95 * k; A1.x = 0.95 * k;
         A0.z = 0.35 * k; A1.z = -0.35 * k;
@@ -2463,6 +2536,7 @@ function girlfriendUpdate(dt, t) {
 
 // ---------- The dog: a yellow lab at heel, born to fetch ----------
 let dog = null, dogState = 'heel', dogCarry = null, dogTargetA = null;
+let dogQueue = [], heldGame = []; // doubles: he fetches them one after the other
 function buildDog() {
   const g = new THREE.Group();
   const c = FurMat(0xc9a35e);
@@ -2546,6 +2620,7 @@ function animateDog(dt, t) {
     const a = dogTargetA;
     if (a.userData.blob) a.userData.blob.visible = false;
     if (a.parent) a.parent.remove(a);
+    a.userData.carried = true; // its death pose is frozen — it rides exactly as slung
     const carrier = new THREE.Group();
     a.position.set(0, -(a.userData.size || 0.4) * 0.42, 0);
     a.rotation.set(0.5, Math.PI/2, 0); // slung across the mouth, hanging limp
@@ -2557,16 +2632,24 @@ function animateDog(dt, t) {
     dogState = 'return';
     barkSound();
   } else if (dogState === 'return' && d <= arrive + 0.05) {
-    // delivers the game straight to the hunter's hand
+    // delivers straight to the hunter — first the far hand, then the near
     if (dogCarry && hunterRefs) {
       dog.remove(dogCarry);
-      dogCarry.position.set(0.114, -0.01, -0.134); // into the far hand
+      if (heldGame.length === 0) {
+        dogCarry.position.set(0.114, -0.01, -0.134);
+        hunterRefs.armFar.add(dogCarry);
+      } else {
+        dogCarry.position.set(-0.04, -0.18, -0.12);
+        hunterRefs.armNear.add(dogCarry);
+      }
       dogCarry.rotation.set(0, 0, 0);
-      hunterRefs.armFar.add(dogCarry);
+      heldGame.push(dogCarry);
+      dogCarry = null;
       if (state === S.CELEB && celeb) { celeb.retrieved = true; celeb.retT = 0; }
       barkSound(); setTimeout(barkSound, 380);
     }
-    dogState = 'heel';
+    if (dogQueue.length) { dogTargetA = dogQueue.shift(); dogState = 'fetch'; } // straight back out for the second
+    else dogState = 'heel';
   }
   // gait driven by real ground speed: stride length stays true, so feet never skate or pop
   ud.stride = (ud.stride || 0) + sp * dt * 3.4;
@@ -2665,7 +2748,8 @@ function celebUpdate(dt) {
       if (celebParty) celebParty.children.forEach(girl => {
         const ud = girl.userData;
         if (ud.twerk) {
-          girl.rotation.y = -Math.PI/2;                                  // turned away
+          const ry0 = celeb.ry0 !== undefined ? celeb.ry0 : 0;
+          girl.rotation.y = Math.atan2(-Math.cos(ry0), Math.sin(ry0));   // turned away from the lens
           girl.rotation.x = 0.5;                                          // bent forward, hands low
           girl.position.y = Math.abs(Math.sin(ct*9 + ud.phase)) * 0.07;   // rapid low bounce
           girl.rotation.z = Math.sin(ct*9 + ud.phase) * 0.09;
@@ -2785,14 +2869,19 @@ function celebUpdate(dt) {
     const kr = Math.min(1, celeb.retT / 0.6);
     H.armFar.rotation.z = 2.15 * kr; // game held up in one hand
     H.armFar.rotation.x = 0;
-    if (celeb.kind !== 'joint') { // the other hand scratches the dog's ears (unless it's holding the joint)
+    if (heldGame.length >= 2) { // a double: one in EACH hand, held high — the joint stays in his lips
+      H.armNear.rotation.z = 2.05 * kr;
+      H.armNear.rotation.x = 0;
+      H.headGrp.rotation.y = 0;
+      H.headGrp.rotation.z = 0.15 * kr; // chin up, taking it in
+    } else if (celeb.kind !== 'joint') { // the other hand scratches the dog's ears (unless it's holding the joint)
       H.armNear.rotation.z = 0.55 * kr;
       H.armNear.rotation.x = 0.65 * kr + Math.sin(ct*5) * 0.15 * kr;
       H.headGrp.rotation.y = -0.35 * kr; // looking down at his buddy
     }
   }
-  // the cutscene holds until the dog has made his delivery and had his moment
-  const fetching = dogState === 'fetch' || dogState === 'return';
+  // the cutscene holds until the dog has finished EVERY trip and had his moment
+  const fetching = dogState === 'fetch' || dogState === 'return' || dogQueue.length > 0;
   const settled = !celeb.retrieved || celeb.retT > 1.8;
   if (celeb.t >= celeb.dur && !fetching && settled) endCeleb();
 }
@@ -2807,20 +2896,22 @@ function startFinale() {
 }
 function endCeleb() {
   const H = hunterRefs;
-  // the held trophy comes down and is laid out beside the chair, on its side
-  if (dogCarry && H && dogCarry.parent === H.armFar) {
-    H.armFar.remove(dogCarry);
-    const hx2 = hunterGroup.position.x + 0.55, hz2 = hunterGroup.position.z + 0.4;
-    dogCarry.position.set(hx2, groundY(hx2, hz2) + 0.04, hz2);
-    dogCarry.rotation.set(0, rnd(0, Math.PI*2), 0);
-    const tro = dogCarry.children[0];
-    if (tro) {
-      tro.position.set(0, (tro.userData && tro.userData.size ? tro.userData.size * 0.12 : 0.05), 0);
-      tro.rotation.set(Math.PI/2 * 0.95, 0, 0); // resting on its side, wound up
-    }
-    scene.add(dogCarry);
-    bloodBits.push(dogCarry); // cleared with the level
-    dogCarry = null;
+  // the held trophies come down and are laid out side by side next to the chair
+  if (heldGame.length) {
+    heldGame.forEach((carrier, idx) => {
+      if (carrier.parent) carrier.parent.remove(carrier);
+      const hx2 = hunterGroup.position.x + 0.55 + idx * 0.55, hz2 = hunterGroup.position.z + 0.4 - idx * 0.2;
+      carrier.position.set(hx2, groundY(hx2, hz2) + 0.04, hz2);
+      carrier.rotation.set(0, rnd(0, Math.PI*2), 0);
+      const tro = carrier.children[0];
+      if (tro) {
+        tro.position.set(0, (tro.userData && tro.userData.size ? tro.userData.size * 0.12 : 0.05), 0);
+        tro.rotation.set(Math.PI/2 * 0.95, 0, 0); // resting on its side, wound up
+      }
+      scene.add(carrier);
+      bloodBits.push(carrier); // cleared with the level
+    });
+    heldGame = [];
   }
   H.armNear.rotation.set(0,0,0);
   H.armFar.rotation.set(0,0,0);
@@ -2950,7 +3041,7 @@ function pressStart(y) {
     return;
   }
   if (state === S.CELEB) {             // tap skips the celebration — but never mid-retrieve
-    if (dogState === 'fetch' || dogState === 'return') return;
+    if (dogState === 'fetch' || dogState === 'return' || dogQueue.length > 0) return;
     endCeleb();
     return;
   }
@@ -3223,11 +3314,13 @@ function spookRun(a, dt) {
 function animateAnimal(dt, t) {
   if (!animals.length) return;
   animals.forEach(a => {
+    if (a.userData.carried) return;              // riding in the dog's mouth — pose frozen
     if (a === animalGroup && animalAnim) return; // the target's reaction is handled below
-    if (a.userData.spooked) spookRun(a, dt);
+    if (a.userData.dead2) deadFall(a, dt);       // taken by the same bullet
+    else if (a.userData.spooked) spookRun(a, dt);
     else wanderAnimal(a, dt, t);
   });
-  if (!animalAnim) return;
+  if (!animalAnim || animalGroup.userData.carried) return;
   const ud = animalGroup.userData;
   const legs = ud.legs || [];
   animalAnim.t += dt;
