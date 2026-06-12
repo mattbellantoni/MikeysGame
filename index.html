@@ -13,7 +13,7 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
   html,body { width:100%; height:100%; overflow:hidden; background:#000; touch-action:none; font-family:Georgia,'Times New Roman',serif; }
-  #c { display:block; width:100%; height:100%; }
+  #c { display:block; position:fixed; inset:0; width:100%; height:100%; } /* pinned to the viewport — survives rotation */
 
   .overlay { position:fixed; inset:0; pointer-events:none; }
 
@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.72</div>
+<div id="verBadge">v1.74</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -234,8 +234,15 @@ function resizeToDisplay() {
     camera.updateProjectionMatrix();
   }
 }
+function onOrient() {
+  // mobile browsers settle the new layout late after a rotation — resync repeatedly
+  window.scrollTo(0, 0);
+  [80, 300, 700, 1200].forEach(ms => setTimeout(resizeToDisplay, ms));
+}
 window.addEventListener('resize', resizeToDisplay);
-window.addEventListener('orientationchange', () => setTimeout(resizeToDisplay, 250));
+window.addEventListener('orientationchange', onOrient);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeToDisplay);
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', onOrient);
 
 const clock = new THREE.Clock();
 
@@ -2456,21 +2463,26 @@ function animateDog(dt, t) {
     const fx = Math.cos(ry), fz = -Math.sin(ry);
     target = { x: hunterGroup.position.x - fz*0.95 - fx*0.2, z: hunterGroup.position.z + fx*0.95 - fz*0.2 };
   }
-  let moving = false;
+  // critically-damped velocity follow: speed eases with distance, so he flows — never lurches
   const dx = target ? target.x - dog.position.x : 0;
   const dz = target ? target.z - dog.position.z : 0;
   const d = target ? Math.hypot(dx, dz) : 0;
-  // hysteresis: only set off once clearly out of position, stop once truly arrived — no jitter
-  if (!target || d <= arrive) ud.run = false;
-  else if (d > go) ud.run = true;
-  if (target && ud.run && d > 0.01) {
-    const step = Math.min(d, speed * dt);
-    dog.position.x += dx / d * step;
-    dog.position.z += dz / d * step;
-    const tr = Math.atan2(-dz, dx);
-    dog.rotation.y += Math.atan2(Math.sin(tr - dog.rotation.y), Math.cos(tr - dog.rotation.y)) * Math.min(1, dt*6);
-    moving = true;
-  } else if (dogState === 'fetch' && dogTargetA && d <= arrive + 0.05) {
+  let dvx = 0, dvz = 0;
+  if (target && d > 0.001) {
+    const stop = dogState === 'fetch' ? 0.7 : (dogState === 'return' ? 1.25 : 0.12);
+    const want = Math.min(speed, (d - stop) * 1.4);
+    if (want > 0) { dvx = dx / d * want; dvz = dz / d * want; }
+  }
+  ud.vx = (ud.vx || 0) + (dvx - (ud.vx || 0)) * Math.min(1, dt * 4);
+  ud.vz = (ud.vz || 0) + (dvz - (ud.vz || 0)) * Math.min(1, dt * 4);
+  const sp = Math.hypot(ud.vx, ud.vz);
+  dog.position.x += ud.vx * dt;
+  dog.position.z += ud.vz * dt;
+  if (sp > 0.4) { // face the way he's actually moving
+    const tr = Math.atan2(-ud.vz, ud.vx);
+    dog.rotation.y += Math.atan2(Math.sin(tr - dog.rotation.y), Math.cos(tr - dog.rotation.y)) * Math.min(1, dt*5);
+  }
+  if (dogState === 'fetch' && dogTargetA && d > 0 && d <= arrive + 0.05) {
     // lifts the real animal — feathers, fur, and the wound where it was hit
     const a = dogTargetA;
     if (a.userData.blob) a.userData.blob.visible = false;
@@ -2484,7 +2496,6 @@ function animateDog(dt, t) {
     dog.add(carrier);
     dogCarry = carrier;
     dogState = 'return';
-    ud.run = true;
     barkSound();
   } else if (dogState === 'return' && d <= arrive + 0.05) {
     // delivers the game straight to the hunter's hand
@@ -2498,11 +2509,15 @@ function animateDog(dt, t) {
     }
     dogState = 'heel';
   }
-  dog.position.y = groundY(dog.position.x, dog.position.z) + (moving ? Math.abs(Math.sin(t*10))*0.05 : 0);
+  // gait driven by real ground speed: stride length stays true, so feet never skate or pop
+  ud.stride = (ud.stride || 0) + sp * dt * 3.4;
+  const gait = Math.min(1, sp / 3); // blends the walk in and out smoothly
+  dog.position.y = groundY(dog.position.x, dog.position.z) + Math.max(0, Math.sin(ud.stride * 2)) * 0.035 * gait;
   ud.legs.forEach((l, i) => {
-    l.rotation.z = moving ? Math.sin(t * (speed > 8 ? 22 : 12) + i*Math.PI) * 0.6 : l.rotation.z * Math.max(0, 1 - 6*dt);
+    const swing = Math.sin(ud.stride + i * Math.PI) * 0.55 * gait;
+    l.rotation.z += (swing - l.rotation.z) * Math.min(1, dt * 14);
   });
-  ud.tail.rotation.x = Math.sin(t * (moving ? 10 : 6)) * 0.5; // always wagging
+  ud.tail.rotation.x = Math.sin(t * (6 + gait * 5)) * 0.5; // always wagging, quicker on the move
 }
 function giggleSound() {
   if (!actx) return;
