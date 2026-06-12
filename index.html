@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.81</div>
+<div id="verBadge">v1.82</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -1555,6 +1555,7 @@ let scopedTime = 0;
 let heartT = 0, birdT = 3;
 let aimTrail = []; // recent aim offsets, to forgive touch-release latency
 let zoomAdj = 1;   // finger-slide zoom while scoped
+let cycPhase = 0;  // aim-cycle phase: every scope-in starts mid-wander, never on the vital
 
 // bullet cam data
 const B = { active:false, t:0, dur:2.5, from:new THREE.Vector3(), to:new THREE.Vector3(), dir:new THREE.Vector3(), result:null, impactDone:false, endT:0 };
@@ -1733,15 +1734,17 @@ function aimOffset(t) {
   const bLen = Math.hypot(b.x, b.y);
   if (bLen > bMax) { b.x *= bMax / bLen; b.y *= bMax / bLen; }
   x += b.x; y += b.y;
-  // settle windows: every cycle the hold steadies onto the vitals.
-  // ~40% vital dwell on the first hunt, tapering to the guaranteed ~10% floor on the last —
-  // and with the wander body-scaled, the reticle rides on the animal well over half the time.
-  const vf = Math.min(0.55, (0.40 - 0.30 * hard) * 1.4);
-  const cycLen = 7.5 - 3 * hard; // harder hunts breathe faster, shorter steady windows
-  const cyc = ((t / cycLen + aimPhase) % 1 + 1) % 1;
+  // the rhythm of a real hold: it wanders first, then steadies onto the vitals for
+  // a ~1 second clean window — never starting on the vital, and the prowl before
+  // each window stretches longer as the season gets harder.
+  const settleDur = 1.0;
+  const wanderDur = 2.2 + 2.8 * hard;
+  const cycLen = settleDur + wanderDur;
+  const vf = settleDur / cycLen;
+  const cyc = ((t / cycLen + cycPhase) % 1 + 1) % 1;
   if (cyc < vf) {
-    const settle = Math.min(1, Math.sin((cyc / vf) * Math.PI) * 1.4);
-    const k = 1 - settle * 0.92;
+    const settle = Math.min(1, Math.sin((cyc / vf) * Math.PI) * 1.6);
+    const k = 1 - settle * 0.94; // flat-bottomed window: the 100% shot lives here
     x *= k; y *= k;
   }
   return new THREE.Vector2(x, y);
@@ -1820,6 +1823,22 @@ function fire() {
   B.liveD = liveD;
   B.dur = WP.durBase + liveD / WP.durDiv;
   B.arcH = liveD * WP.arc; // arrow flies an arc
+  // the round cannot pass through the landscape — the first ridge in the way takes it.
+  // if terrain blocks your line, you have to work the chair closer for a clean shot.
+  for (let u = 0.03; u < 0.985; u += 0.016) {
+    const px = B.from.x + (B.to.x - B.from.x) * u;
+    const py = B.from.y + (B.to.y - B.from.y) * u + (B.arcH || 0) * 4 * u * (1 - u);
+    const pz = B.from.z + (B.to.z - B.from.z) * u;
+    if (py < groundY(px, pz) - 0.04) {
+      B.to.set(px, groundY(px, pz) + 0.06, pz);
+      B.dur = Math.max(0.9, B.dur * u);
+      B.arcH = (B.arcH || 0) * u;
+      B.result = { pts: 0, stars: 0, title: 'NO CLEAR SHOT',
+        desc: 'The round buried itself in the terrain between you and your quarry. Work the chair in closer until you have a clean line of sight.' };
+      B.resultMiss = 99;
+      break;
+    }
+  }
   B.t = 0; B.active = true; B.impactDone = false; B.endT = 0;
 
   // projectile
@@ -3062,8 +3081,14 @@ function pressStart(y) {
     state = S.SCOPED;
     targetIdx = (targetIdx + 1) % animals.length; // in a herd, re-aiming switches targets
     animalGroup = animals[targetIdx];
-    scopedTime = rnd(0, 10);
+    scopedTime = 0;
     aimPhase = rnd(0, 100);
+    // start the cycle just past a settle window: he has to ride out the wander first
+    {
+      const hard = levelIdx / (LEVELS.length - 1);
+      const cl = 1.0 + (2.2 + 2.8 * hard);
+      cycPhase = (1.0 / cl) + 0.03 + rnd(0, 0.1);
+    }
     pressing = true; pressStartY = y; fired = false;
     scopeEnterT = performance.now();
     aimTrail = [];
