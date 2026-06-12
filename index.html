@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.74</div>
+<div id="verBadge">v1.75</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -222,18 +222,26 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHei
 // keep the render target matched to the canvas's REAL on-screen size every frame —
 // mobile browser chrome (address bars) resizes the viewport without firing resize,
 // which stretched the canvas and pushed the crosshair off the true aim point
+let lastResizeAt = 0;
 function resizeToDisplay() {
   const w = canvas.clientWidth || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
   if (!w || !h) return;
   const pr = Math.min(window.devicePixelRatio, 1.75);
-  if (Math.abs(canvas.width - w*pr) > 1 || Math.abs(canvas.height - h*pr) > 1) {
-    renderer.setPixelRatio(pr);
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
+  const dw = Math.abs(canvas.width - w*pr), dh = Math.abs(canvas.height - h*pr);
+  if (dw <= 1 && dh <= 1) return;
+  // throttle small reallocations while browser chrome animates — buffer thrash can kill the GL context
+  const now = performance.now();
+  if (dw < 80*pr && dh < 80*pr && now - lastResizeAt < 160) return;
+  lastResizeAt = now;
+  renderer.setPixelRatio(pr);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
 }
+// if the GPU context drops (rotation/fullscreen on mobile), allow it to come back instead of going gray
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); }, false);
+canvas.addEventListener('webglcontextrestored', () => { lastResizeAt = 0; resizeToDisplay(); }, false);
 function onOrient() {
   // mobile browsers settle the new layout late after a rotation — resync repeatedly
   window.scrollTo(0, 0);
