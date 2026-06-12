@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.75</div>
+<div id="verBadge">v1.76</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -208,13 +208,38 @@
    ============================================================ */
 
 // ---------- Renderer / scene basics ----------
-const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputEncoding = THREE.sRGBEncoding;
+let canvas = document.getElementById('c');
+let renderer = null;
+function makeRenderer() {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  // let a dropped GPU context come back instead of dying gray
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); }, false);
+  canvas.addEventListener('webglcontextrestored', () => { lastResizeAt = 0; resizeToDisplay(); }, false);
+}
+makeRenderer();
+// last resort: if the context stays dead, rebuild the whole renderer on a fresh canvas
+let ctxLostAt = 0;
+function rendererWatchdog() {
+  const gl = renderer.getContext();
+  if (gl && gl.isContextLost()) {
+    if (!ctxLostAt) ctxLostAt = performance.now();
+    else if (performance.now() - ctxLostAt > 1500) {
+      ctxLostAt = 0;
+      try { renderer.dispose(); } catch (e) {}
+      const fresh = canvas.cloneNode(false);
+      canvas.parentNode.replaceChild(fresh, canvas);
+      canvas = fresh;
+      makeRenderer();
+      lastResizeAt = 0;
+      resizeToDisplay();
+    }
+  } else ctxLostAt = 0;
+}
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2000);
@@ -234,17 +259,24 @@ function resizeToDisplay() {
   const now = performance.now();
   if (dw < 80*pr && dh < 80*pr && now - lastResizeAt < 160) return;
   lastResizeAt = now;
+  // pin the page itself to the real viewport — defeats the iOS stale-layout rotation bug
+  document.documentElement.style.height = window.innerHeight + 'px';
+  document.body.style.height = window.innerHeight + 'px';
   renderer.setPixelRatio(pr);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
-// if the GPU context drops (rotation/fullscreen on mobile), allow it to come back instead of going gray
-canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); }, false);
-canvas.addEventListener('webglcontextrestored', () => { lastResizeAt = 0; resizeToDisplay(); }, false);
 function onOrient() {
-  // mobile browsers settle the new layout late after a rotation — resync repeatedly
+  // mobile browsers settle the new layout late after a rotation — resync repeatedly,
+  // and re-write the viewport meta to FORCE Safari to relayout at the new width
   window.scrollTo(0, 0);
+  const vpMeta = document.querySelector('meta[name=viewport]');
+  if (vpMeta) {
+    const c = vpMeta.getAttribute('content');
+    vpMeta.setAttribute('content', c + ', minimal-ui');
+    setTimeout(() => { vpMeta.setAttribute('content', c); window.scrollTo(0, 0); }, 60);
+  }
   [80, 300, 700, 1200].forEach(ms => setTimeout(resizeToDisplay, ms));
 }
 window.addEventListener('resize', resizeToDisplay);
@@ -3251,6 +3283,7 @@ let wselShown = true;
 function tick() {
   requestAnimationFrame(tick);
   resizeToDisplay();
+  rendererWatchdog();
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
