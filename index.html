@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.77</div>
+<div id="verBadge">v1.78</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -247,11 +247,18 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHei
 // keep the render target matched to the canvas's REAL on-screen size every frame —
 // mobile browser chrome (address bars) resizes the viewport without firing resize,
 // which stretched the canvas and pushed the crosshair off the true aim point
-let lastResizeAt = 0, prTrim = 1;
+let lastResizeAt = 0, prTrim = 1, viewW = 0, viewH = 0;
 function resizeToDisplay() {
-  const w = canvas.clientWidth || window.innerWidth;
-  const h = canvas.clientHeight || window.innerHeight;
+  // the VISUAL viewport is the ground truth — after rotation iOS often leaves the page
+  // LAYOUT at the old width, which strands the canvas on half the screen (black remainder)
+  const vv = window.visualViewport;
+  const w = Math.round(vv ? vv.width : (canvas.clientWidth || window.innerWidth));
+  const h = Math.round(vv ? vv.height : (canvas.clientHeight || window.innerHeight));
   if (!w || !h) return;
+  viewW = w; viewH = h;
+  // size the canvas element explicitly in pixels — never trust 100%-of-layout again
+  if (canvas.style.width !== w + 'px') canvas.style.width = w + 'px';
+  if (canvas.style.height !== h + 'px') canvas.style.height = h + 'px';
   // pixel budget: never ask the mobile GPU for more than ~4MP — oversized buffers get
   // silently clamped on rotation, which paints only part of the canvas (black right half)
   let pr = Math.min(window.devicePixelRatio, 1.75) * prTrim;
@@ -3453,6 +3460,7 @@ function tick() {
   else if (state === S.BULLET && B.active) bulletCamera(dt);
   else if (state === S.CELEB) { celebUpdate(dt); if (celeb) celebCamera(); }
 
+  if (viewW) renderer.setViewport(0, 0, viewW, viewH); // re-assert every frame — stale GL viewports can't survive this
   renderer.render(scene, camera);
 }
 
