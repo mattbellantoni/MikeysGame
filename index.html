@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.67</div>
+<div id="verBadge">v1.68</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -1870,8 +1870,8 @@ function buildGirl(i, force) {
   ].map(p => new THREE.Vector2(p[0], p[1])); // fuller through the bust line
   const torso = P(g, new THREE.LatheGeometry(torsoPts, 28), skin, 0, 0, 0);
   torso.scale.z = 0.80; // elliptical cross-section, front to back
-  // soft seat, mostly tucked into the lathe so it reads as one shape
-  for (const s of [-1,1]) P(g, new THREE.SphereGeometry(0.072, 16, 12), skin, s*0.048, 0.795, -0.072).scale.z = 0.95;
+  // soft seat, mostly tucked into the lathe so it reads as one shape (denim-covered in the casual outfit)
+  for (const s of [-1,1]) P(g, new THREE.SphereGeometry(0.072, 16, 12), casual ? pantM : skin, s*0.048, 0.795, -0.072).scale.z = 0.95;
   // legs: one smooth lathed taper each, ankle to hip — no segment seams
   const legPts = [
     [0.024,0.045],[0.034,0.10],[0.044,0.20],[0.050,0.30],[0.054,0.40],[0.060,0.50],
@@ -1885,7 +1885,7 @@ function buildGirl(i, force) {
   if (casual) {
     // pants: full hip coverage with a waistband
     const seat = P(g, new THREE.SphereGeometry(0.170, 24, 18), pantM, 0, 0.805, -0.004);
-    seat.scale.set(0.98, 0.58, 0.88);
+    seat.scale.set(1.01, 0.63, 0.94); // a little extra fabric so nothing shows through
     P(g, new THREE.CylinderGeometry(0.135, 0.130, 0.05, 18), pantM, 0, 0.935, 0).scale.z = 0.84;
   } else {
     // bikini bottom: front and back coverage, with string ties over the hips
