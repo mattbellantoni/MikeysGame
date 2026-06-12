@@ -198,7 +198,7 @@
 
 <div id="spookMsg">SPOOKED!<br><span>They've seen you &mdash; there they go!</span></div>
 
-<div id="verBadge">v1.70</div>
+<div id="verBadge">v1.72</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -1021,14 +1021,22 @@ function buildWorld(level) {
     worldGroup.add(moon);
   }
 
-  // snow particles
+  // weather: darken the world under a storm, then fill the sky with the right precipitation
+  if (weather && weather.dim) {
+    sunLight.intensity *= weather.dim;
+    ambLight.intensity *= 0.75 + 0.25 * weather.dim;
+    const stormGrey = new THREE.Color(0x6e7686);
+    scene.background.lerp(stormGrey, (1 - weather.dim) * 0.7);
+    scene.fog.color.lerp(stormGrey, (1 - weather.dim) * 0.6);
+    scene.fog.far *= weather.fogF;
+  }
   if (snowPts) { scene.remove(snowPts); snowPts = null; }
-  if (env.snow) {
-    const n = 900, pos = new Float32Array(n*3);
-    for (let i=0;i<n;i++) { pos[i*3]=rnd(-60,60); pos[i*3+1]=rnd(0,45); pos[i*3+2]=rnd(-D-30,10); }
+  if (weather && weather.count) {
+    const n = weather.count, pos = new Float32Array(n*3);
+    for (let i=0;i<n;i++) { pos[i*3]=rnd(-70,70); pos[i*3+1]=rnd(0,48); pos[i*3+2]=rnd(-D-40,12); }
     const gp = new THREE.BufferGeometry();
     gp.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    snowPts = new THREE.Points(gp, new THREE.PointsMaterial({ color:0xffffff, size:0.35, transparent:true, opacity:0.85 }));
+    snowPts = new THREE.Points(gp, new THREE.PointsMaterial({ color:weather.col, size:weather.size, transparent:true, opacity:weather.op }));
     scene.add(snowPts);
   }
 
@@ -1241,6 +1249,13 @@ function startAmbient() {
   src.connect(windLpNode); windLpNode.connect(windGainNode); windGainNode.connect(actx.destination);
   src.start(); lfo.start();
   applyWindAudio();
+  // rain layer: the same noise, hissing high — silent until the weather calls for it
+  const rsrc = actx.createBufferSource(); rsrc.buffer = buf; rsrc.loop = true;
+  const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500;
+  rainGainNode = actx.createGain(); rainGainNode.gain.value = 0;
+  rsrc.connect(hp); hp.connect(rainGainNode); rainGainNode.connect(actx.destination);
+  rsrc.start();
+  applyWeatherAudio();
 }
 function applyWindAudio() {
   if (!windGainNode || !wind) return;
@@ -1415,6 +1430,48 @@ let stalk = null;   // the push toward the quarry
 let spookT = 0;
 let wind = null;    // each hunt has its own wind
 let hudDistT = 0;
+// ---------- Weather ----------
+let weather = null, weatherKey = 'clear', boltT = 5, rainGainNode = null;
+const WEATHERS = {
+  clear:    { label:'' },
+  drizzle:  { label:'Drizzle',         count:500,  size:0.07, speed:14, drift:1,   col:0xa8b4c0, op:0.35, dim:0.85, fogF:0.85, audio:0.035 },
+  rain:     { label:'Rain',            count:1300, size:0.10, speed:22, drift:1,   col:0x9fb0c2, op:0.45, dim:0.70, fogF:0.75, audio:0.085 },
+  heavy:    { label:'Heavy rain',      count:2400, size:0.13, speed:28, drift:1.5, col:0x96a8bc, op:0.50, dim:0.55, fogF:0.60, audio:0.15 },
+  thunder:  { label:'Thunderstorm',    count:2400, size:0.13, speed:28, drift:2,   col:0x96a8bc, op:0.50, dim:0.45, fogF:0.55, audio:0.15, bolts:[6, 14] },
+  lightning:{ label:'Lightning storm', count:1600, size:0.11, speed:24, drift:2,   col:0x9fb0c2, op:0.45, dim:0.40, fogF:0.60, audio:0.11, bolts:[2.5, 7] },
+  snow:     { label:'Snow',            count:1100, size:0.30, speed:2.4, drift:1,  col:0xffffff, op:0.85, dim:0.90, fogF:0.85 },
+  sleet:    { label:'Sleet',           count:1400, size:0.16, speed:9,  drift:1.4, col:0xdfe6ec, op:0.60, dim:0.75, fogF:0.70, audio:0.05 },
+  hail:     { label:'Hail',            count:600,  size:0.30, speed:16, drift:1,   col:0xf2f5f8, op:0.90, dim:0.65, fogF:0.70, audio:0.09 },
+  freezing: { label:'Freezing rain',   count:1500, size:0.11, speed:18, drift:1.2, col:0xcfe0ea, op:0.50, dim:0.70, fogF:0.70, audio:0.09 },
+  blizzard: { label:'Blizzard',        count:2800, size:0.28, speed:5,  drift:4,   col:0xffffff, op:0.90, dim:0.55, fogF:0.45, audio:0.09 }
+};
+function rollWeather(envKey) {
+  let pool;
+  if (envKey === 'snowMountain') pool = ['snow', 'snow', 'sleet', 'blizzard', 'freezing'];
+  else if (envKey === 'alpine' || envKey === 'tundra') pool = ['clear', 'clear', 'drizzle', 'sleet', 'hail', 'snow'];
+  else if (envKey.indexOf('savanna') === 0) pool = ['clear', 'clear', 'clear', 'clear', 'rain', 'thunder'];
+  else pool = ['clear', 'clear', 'clear', 'drizzle', 'rain', 'rain', 'heavy', 'thunder', 'lightning'];
+  return pool[Math.floor(rnd(0, pool.length))];
+}
+function applyWeatherAudio() {
+  if (rainGainNode && weather) rainGainNode.gain.value = weather.audio || 0;
+}
+function thunderSound(delay, vol) {
+  if (!actx) return;
+  noiseBurst(delay, 2.6, 240, vol, 1.1);          // the long roll
+  noiseBurst(delay + 0.15, 1.6, 120, vol*0.8, 1.0);
+  thumpSound(delay, 55, 28, 1.2, vol*0.9);        // the chest-shaking sub
+}
+function spawnBolt() {
+  const pts = [];
+  let x = hunterGroup.position.x + rnd(-160, 160), z = -LEVELS[levelIdx].dist - rnd(80, 350), y = 130;
+  while (y > 0) { pts.push(new THREE.Vector3(x, y, z)); x += rnd(-9, 9); z += rnd(-4, 4); y -= rnd(10, 22); }
+  pts.push(new THREE.Vector3(x, 0, z));
+  const bolt = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color:0xeef2ff, transparent:true, opacity:0.95, fog:false }));
+  scene.add(bolt);
+  setTimeout(() => scene.remove(bolt), 140);
+}
 let state = S.START;
 let introT = 0;
 const INTRO_DUR = 4.2;
@@ -1444,7 +1501,8 @@ function setHUD() {
   const L = LEVELS[levelIdx];
   $('lvlName').textContent = 'Hunt ' + (levelIdx+1) + ': ' + L.name;
   $('lvlSub').innerHTML = ENVS[L.env].label + ' • <span id="lvlDist">' + L.dist + '</span> yds • '
-    + WEAPONS[weapon].label + (wind ? ' • ' + windLabel() : '');
+    + WEAPONS[weapon].label + (wind ? ' • ' + windLabel() : '')
+    + (weather && weather.label ? ' • ' + weather.label : '');
   $('totScore').textContent = totalScore + ' pts';
   $('lvlCount').textContent = 'Hunt ' + (levelIdx+1) + ' of ' + LEVELS.length;
   $('bestScore').textContent = sessionBest > 0 ? 'Beat: ' + sessionBest + ' pts' : '';
@@ -1465,6 +1523,11 @@ function loadLevel(i, skipFly) {
   wind.x = Math.sin(wind.dir) * wind.speed * 0.1; // lateral push across the lane
   wind.scent = Math.cos(wind.dir);                // +1 carries your scent straight to the herd
   applyWindAudio();                               // and you HEAR how hard it's blowing
+  // roll the weather for this hunt — climate-appropriate, different every attempt
+  weatherKey = rollWeather(LEVELS[i].env);
+  weather = WEATHERS[weatherKey];
+  boltT = rnd(2, 6);
+  applyWeatherAudio();
   buildWorld(LEVELS[i]);
   animalAnim = null;
   if (bulletMesh) { scene.remove(bulletMesh); bulletMesh = null; }
@@ -1582,18 +1645,37 @@ function vitalWorld() {
   return animalGroup.localToWorld(animalGroup.userData.vital.clone());
 }
 function aimAmplitude() {
-  // grows over 25 hunts: mostly on-vitals at hunt 1, hard-earned by the cape buffalo
+  // wander radius: tight on hunt 1, wide by the cape buffalo — but always body-scale
   const r = animalGroup.userData.vitalR;
-  return r * (1.2 + levelIdx * 0.11) * WEAPONS[weapon].sway;
+  const hard = levelIdx / (LEVELS.length - 1);
+  return r * (1.05 + 0.85 * hard) * WEAPONS[weapon].sway;
 }
 function aimOffset(t) {
+  const r = animalGroup.userData.vitalR;
+  const hard = levelIdx / (LEVELS.length - 1); // 0 = first hunt, 1 = the cape buffalo
   const A = aimAmplitude();
-  const sp = 1.12 + levelIdx * 0.05; // sway speed grows slightly
-  const x = A * (0.62*Math.sin(t*1.1*sp + aimPhase) + 0.38*Math.sin(t*2.3*sp + aimPhase*1.7));
-  const y = A * (0.62*Math.sin(t*0.9*sp + aimPhase*2.3) + 0.38*Math.sin(t*1.9*sp + aimPhase*0.6));
-  // wind and gravity shift the whole hold — what you see in the sight is still where it lands
+  const sp = 1.0 + hard * 1.1;
+  let x = A * (0.62*Math.sin(t*1.1*sp + aimPhase) + 0.38*Math.sin(t*2.3*sp + aimPhase*1.7));
+  let y = A * (0.62*Math.sin(t*0.9*sp + aimPhase*2.3) + 0.38*Math.sin(t*1.9*sp + aimPhase*0.6));
+  // ballistic hold-off (wind + drop) — CAPPED so the vitals always stay reachable.
+  // the cap grows with difficulty, so late hunts fight real drift without ever becoming impossible
   const b = ballisticBias();
-  return new THREE.Vector2(x + b.x, y + b.y);
+  const bMax = r * (0.35 + 0.65 * hard);
+  const bLen = Math.hypot(b.x, b.y);
+  if (bLen > bMax) { b.x *= bMax / bLen; b.y *= bMax / bLen; }
+  x += b.x; y += b.y;
+  // settle windows: every cycle the hold steadies onto the vitals.
+  // ~40% vital dwell on the first hunt, tapering to the guaranteed ~10% floor on the last —
+  // and with the wander body-scaled, the reticle rides on the animal well over half the time.
+  const vf = Math.min(0.55, (0.40 - 0.30 * hard) * 1.4);
+  const cycLen = 7.5 - 3 * hard; // harder hunts breathe faster, shorter steady windows
+  const cyc = ((t / cycLen + aimPhase) % 1 + 1) % 1;
+  if (cyc < vf) {
+    const settle = Math.min(1, Math.sin((cyc / vf) * Math.PI) * 1.4);
+    const k = 1 - settle * 0.92;
+    x *= k; y *= k;
+  }
+  return new THREE.Vector2(x, y);
 }
 function scopedFov() {
   const span = animalGroup.userData.size * 5 + aimAmplitude()*4;
@@ -3189,14 +3271,30 @@ function tick() {
     }
   }
 
-  if (snowPts) {
+  if (snowPts && weather) {
     const pos = snowPts.geometry.attributes.position;
+    const driftX = (wind ? wind.x : 0) * (weather.drift || 1) * dt * 4;
     for (let i=0;i<pos.count;i++) {
-      let y = pos.getY(i) - dt * 2.2;
-      if (y < 0) y = 45;
-      pos.setY(i, y);
+      let y = pos.getY(i) - weather.speed * dt * (0.7 + (i % 7) * 0.08); // varied fall speeds
+      let x = pos.getX(i) + driftX;
+      if (y < 0) { y = 48; x = rnd(-70, 70); }
+      if (x > 75) x = -75; else if (x < -75) x = 75;
+      pos.setY(i, y); pos.setX(i, x);
     }
     pos.needsUpdate = true;
+  }
+  // thunder & lightning
+  if (weather && weather.bolts && state !== S.START) {
+    boltT -= dt;
+    if (boltT <= 0) {
+      boltT = rnd(weather.bolts[0], weather.bolts[1]);
+      spawnBolt();
+      flashEl.style.opacity = 0.5;
+      setTimeout(() => { flashEl.style.opacity = 0; }, 80);
+      setTimeout(() => { flashEl.style.opacity = 0.3; setTimeout(() => { flashEl.style.opacity = 0; }, 60); }, 150);
+      const delay = rnd(0.4, 2.2); // far strikes rumble in late and quiet
+      thunderSound(delay, Math.max(0.15, 0.5 - delay * 0.15));
+    }
   }
 
   impactParts.forEach(p => {
